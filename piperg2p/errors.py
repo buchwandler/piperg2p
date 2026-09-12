@@ -1,0 +1,55 @@
+"""Public exceptions and warnings raised by :mod:`piperg2p`."""
+
+from __future__ import annotations
+
+
+class PiperG2PError(Exception):
+    """Base class for piperg2p failures."""
+
+
+class ConfigError(PiperG2PError, ValueError):
+    """The voice configuration is invalid."""
+
+
+class UnsupportedPhonemeTypeError(ConfigError):
+    """The configuration names a frontend that is not supported."""
+
+
+class BackendError(PiperG2PError):
+    """Base class for backend failures."""
+
+
+class BackendUnavailableError(BackendError):
+    """A requested backend cannot be initialized."""
+
+
+class PhonemizationError(BackendError):
+    """A backend failed while converting text."""
+
+
+class ResourceError(PiperG2PError):
+    """A language or backend resource is invalid."""
+
+
+class ResourceUnavailableError(ResourceError):
+    """An optional resource is not installed or usable."""
+
+
+class MissingPhonemeError(PiperG2PError, KeyError):
+    """A required phoneme is absent from the selected voice map."""
+
+
+class PiperG2PWarning(UserWarning):
+    """Base class for piperg2p warnings."""
+
+
+class MissingPhonemeWarning(PiperG2PWarning):
+    """A phoneme was omitted because it is absent from the voice map."""
+
+
+class BackendFallbackWarning(PiperG2PWarning):
+    """A backend fell back to a less compatible implementation."""
+
+
+class CompatibilityWarning(PiperG2PWarning):
+    """A compatibility-relevant lenient behavior was used."""

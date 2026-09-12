@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "piperg2p"
+version = "0.2.0"
+description = "Independent Piper-compatible text/phoneme/id frontend for Piper ONNX voice configs"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [{name = "piperg2p contributors"}]
+keywords = ["tts", "piper", "g2p", "phonemizer", "onnx", "espeak"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "pytest-cov>=4", "ruff>=0.6", "mypy>=1.10", "build>=1"]
+espeak-direct = []
+zh = []
+ja = []
+th = []
+he = []
+ar = []
+
+[project.urls]
+Repository = "https://github.com/example/piperg2p"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["piperg2p*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+  "espeak: tests requiring eSpeak",
+  "integration: integration tests",
+  "resource_heavy: tests requiring large resources",
+  "reference: pinned reference compatibility tests",
+]
+
+[tool.ruff.lint]
+ignore = ["PYI034", "UP037"]

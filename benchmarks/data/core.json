@@ -1,0 +1,14 @@
+{
+  "profile": {
+    "name": "piperg2p-phase1-core",
+    "reference": "OHF-Voice/piper1-gpl",
+    "commit": "404aefedbd74baa0bd43e451bc407a2b3aace0f5",
+    "target": "piper-python-main",
+    "status": "metadata-only until reference subprocess is provisioned"
+  },
+  "cases": [
+    {"id": "text-nfd", "phoneme_type": "text", "text": "Cafe\u0301", "policy": "exact"},
+    {"id": "espeak-punctuation", "phoneme_type": "espeak", "text": "Hello, world.", "policy": "diagnostic"},
+    {"id": "espeak-residual", "phoneme_type": "espeak", "text": "No terminal punctuation", "policy": "diagnostic"}
+  ]
+}
