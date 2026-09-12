@@ -9,5 +9,6 @@ The primary target is the Python Piper voice behavior at pinned reference commit
 | eSpeak CLI | executable required | best-effort |
 | Raw blocks | yes, eSpeak only | reference-tested foundation |
 | Pinyin, Japanese, Thai, Hebrew, Arabic | no provider in Phase 1 | unsupported or deferred |
+| Lexphon/G2Lex overlay | opt-in | override extension, not upstream exact parity |
 
 The pinned Phase 1 corpus metadata is in `benchmarks/data/core.json`. It is not a golden output and cannot silently refresh. Exactness claims require reference output and dependency metadata.

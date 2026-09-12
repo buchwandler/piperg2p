@@ -24,7 +24,13 @@ classifiers = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7", "pytest-cov>=4", "ruff>=0.6", "mypy>=1.10", "build>=1"]
-espeak-direct = []
+g2lex = ["g2lex>=0.1.8,<0.2"]
+lexphon = ["lexphon>=0.2.3,<0.3"]
+espeak-direct = [
+  "espeakng-loader>=0.1.0",
+  "dlinfo>=1.2.1; sys_platform != 'win32' and sys_platform != 'android'",
+]
+lexicons = ["lexphon>=0.2.3,<0.3"]
 zh = []
 ja = []
 th = []

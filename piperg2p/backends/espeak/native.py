@@ -9,9 +9,10 @@ from ...diagnostics import BackendDiagnostics
 from ...errors import BackendUnavailableError, PhonemizationError
 from .clauses import Clause
 
-_AUDIO_OUTPUT_SYNCHRONOUS = 3
-_CHARS_UTF8 = 1
-_IPA = 2
+# Values from the public eSpeak NG speech.h API.
+AUDIO_OUTPUT_SYNCHRONOUS = 2
+CHARS_UTF8 = 1
+IPA_OUTPUT = 2
 _TERMINATORS = {
     0x41000: (",", False),
     0x42000: (":", False),
@@ -51,7 +52,7 @@ class _NativeManager:
                     path = Path(data_path)
                     init_path = str(path.parent if path.name == "espeak-ng-data" else path)
                 result = self.library.espeak_Initialize(
-                    _AUDIO_OUTPUT_SYNCHRONOUS,
+                    AUDIO_OUTPUT_SYNCHRONOUS,
                     0,
                     init_path.encode() if init_path else None,
                     0,
@@ -110,11 +111,13 @@ class NativeEspeakProvider:
         library: str | None = None,
         data: str | None = None,
         executable: str | None = None,
+        discovery_source: str | None = None,
         strict: bool = False,
     ) -> None:
         self.library_path = library
         self.data_path = data
         self.executable = executable
+        self.discovery_source = discovery_source
         self._closed = False
         self._library = _MANAGER.acquire(library, data)
         self.exact_clause_api = hasattr(self._library, "espeak_TextToPhonemesWithTerminator")
@@ -132,6 +135,7 @@ class NativeEspeakProvider:
             executable=self.executable,
             library_path=_MANAGER.path or self.library_path,
             data_path=self.data_path,
+            discovery_source=self.discovery_source,
             version=self.version,
             exact_clause_api=self.exact_clause_api,
             parity="exact" if self.exact_clause_api else "best-effort",
@@ -154,10 +158,10 @@ class NativeEspeakProvider:
                 terminator = ctypes.c_int(0)
                 if self.exact_clause_api:
                     value = self._library.espeak_TextToPhonemesWithTerminator(
-                        ctypes.byref(pointer), _CHARS_UTF8, _IPA, ctypes.byref(terminator)
+                        ctypes.byref(pointer), CHARS_UTF8, IPA_OUTPUT, ctypes.byref(terminator)
                     )
                 else:
-                    value = self._library.espeak_TextToPhonemes(ctypes.byref(pointer), _CHARS_UTF8, _IPA)
+                    value = self._library.espeak_TextToPhonemes(ctypes.byref(pointer), CHARS_UTF8, IPA_OUTPUT)
                 if pointer.value == previous:
                     raise PhonemizationError("eSpeak clause API made no progress")
                 payload = value.decode("utf-8") if value else ""

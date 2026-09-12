@@ -19,6 +19,7 @@ class EspeakBackend:
     data: str | None = None
     vowel_clusters: frozenset[tuple[str, ...]] = frozenset()
     strict_native: bool = False
+    merge_vowel_clusters: bool = True
     timeout: float | None = None
 
     def __post_init__(self) -> None:
@@ -38,17 +39,20 @@ class EspeakBackend:
                     library=paths.library,
                     data=paths.data,
                     executable=paths.executable,
-                    strict=self.strict_native or self.mode == "native",
+                    discovery_source=paths.source,
+                    strict=self.strict_native or self.mode in {"native", "auto"},
                 )
             except (BackendUnavailableError, OSError) as exc:
                 if self.mode == "native":
                     raise
-                fallback_reason = f"{type(exc).__name__}: {exc}"
-        if self.mode == "cli" or fallback_reason is not None:
+                if "lacks espeak_TextToPhonemesWithTerminator" in str(exc):
+                    fallback_reason = "terminator API unavailable"
+                else:
+                    fallback_reason = f"{type(exc).__name__}: {exc}"
             self._provider = EspeakCliBackend(
                 executable=self.executable,
                 data_path=self.data,
-                vowel_clusters=self.vowel_clusters,
+                vowel_clusters=self.vowel_clusters if self.merge_vowel_clusters else frozenset(),
                 timeout=self.timeout,
             )
         provider_diagnostics = self._provider.diagnostics
@@ -64,6 +68,7 @@ class EspeakBackend:
                 executable=provider_diagnostics.executable,
                 library_path=provider_diagnostics.library_path,
                 data_path=provider_diagnostics.data_path,
+                discovery_source=provider_diagnostics.discovery_source,
                 version=provider_diagnostics.version,
                 exact_clause_api=provider_diagnostics.exact_clause_api,
                 fallback_reason=fallback_reason,
@@ -77,6 +82,7 @@ class EspeakBackend:
                 executable=provider_diagnostics.executable,
                 library_path=provider_diagnostics.library_path,
                 data_path=provider_diagnostics.data_path,
+                discovery_source=provider_diagnostics.discovery_source,
                 version=provider_diagnostics.version,
                 exact_clause_api=provider_diagnostics.exact_clause_api,
                 fallback_reason=provider_diagnostics.fallback_reason,
@@ -90,7 +96,8 @@ class EspeakBackend:
 
     def phonemize(self, text: str, *, voice: str) -> list[list[str]]:
         if isinstance(self._provider, NativeEspeakProvider):
-            return compose_clauses(self._provider.clauses(text, voice), self.vowel_clusters)
+            clusters = self.vowel_clusters if self.merge_vowel_clusters else frozenset()
+            return compose_clauses(self._provider.clauses(text, voice), clusters)
         return self._provider.phonemize(text, voice=voice)
 
     def close(self) -> None:

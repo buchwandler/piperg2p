@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
-from .backends import PhonemeBackend
+from .backends import EspeakBackend, PhonemeBackend
 from .codec import EncodeResult, MissingPhonemePolicy
 from .config import PhonemeType, VoiceConfig
 from .diagnostics import FrontendDiagnostics
-from .errors import UnsupportedPhonemeTypeError
+from .errors import LexiconConfigurationError, UnsupportedPhonemeTypeError
+from .lexicons.base import LexiconDiagnostics, PronunciationLookup
+from .lexicons.overlay import compose_lexicon_overlay
 from .raw_blocks import compose_raw_segments, parse_raw_blocks
 from .registry import spec_for
 from .types import PhonemeSentence, PhonemizeResult
@@ -23,18 +25,53 @@ class PiperFrontend:
         *,
         backend: PhonemeBackend | None = None,
         missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN,
+        lexicons: Sequence[str] = (),
+        lexicon_store: Any = None,
+        lexicon_backend: PronunciationLookup | None = None,
     ) -> None:
         self.config = config
         self.missing = MissingPhonemePolicy(missing)
         self._spec = spec_for(config)
+        self._lexicon_identifiers = tuple(lexicons)
+        if self._lexicon_identifiers and lexicon_backend is not None:
+            raise LexiconConfigurationError("lexicons and lexicon_backend are mutually exclusive")
+        if lexicon_store is not None and not self._lexicon_identifiers:
+            raise LexiconConfigurationError("lexicon_store requires managed lexicons")
+        if (self._lexicon_identifiers or lexicon_backend is not None) and config.phoneme_type is not PhonemeType.ESPEAK:
+            raise LexiconConfigurationError("lexicon overlay only supports phoneme_type='espeak'")
+        self._lexicon_store = lexicon_store
+        self._lexicon_backend = lexicon_backend
+        self._owns_lexicon_backend = False
         self.backend = backend if backend is not None else self._make_backend()
+
+    @property
+    def _lexicon_enabled(self) -> bool:
+        return bool(self._lexicon_identifiers or self._lexicon_backend is not None)
 
     def _make_backend(self) -> PhonemeBackend:
         if self.config.phoneme_type in {PhonemeType.TEXT, PhonemeType.ESPEAK}:
+            if self.config.phoneme_type is PhonemeType.ESPEAK and self._lexicon_enabled:
+                return EspeakBackend(
+                    vowel_clusters=self.config.vowel_clusters,
+                    merge_vowel_clusters=False,
+                )
             return self._spec.backend_factory(self.config)
         raise UnsupportedPhonemeTypeError(
             f"phoneme_type {self.config.phoneme_type.value!r} requires optional extra {self._spec.optional_extra!r}"
         )
+
+    def _ensure_lexicon_backend(self) -> PronunciationLookup:
+        if self._lexicon_backend is not None:
+            return self._lexicon_backend
+        from .lexicons.lexphon import LexphonLookup
+
+        self._lexicon_backend = LexphonLookup(
+            self.config.espeak_voice,
+            self._lexicon_identifiers,
+            store=self._lexicon_store,
+        )
+        self._owns_lexicon_backend = True
+        return self._lexicon_backend
 
     @classmethod
     def from_config(cls, path: str | Path, **kwargs: Any) -> PiperFrontend:
@@ -43,6 +80,19 @@ class PiperFrontend:
     def encode(self, phonemes: Iterable[str]) -> EncodeResult:
         return self._spec.encoder.encode(tuple(phonemes), self.config.phoneme_id_map, self.missing)
 
+    def _lexicon_diagnostics(self) -> LexiconDiagnostics | None:
+        if not self._lexicon_enabled:
+            return None
+        if self._lexicon_backend is not None:
+            return self._lexicon_backend.diagnostics
+        return LexiconDiagnostics(
+            enabled=True,
+            implementation="lexphon",
+            language=self.config.espeak_voice,
+            identifiers=self._lexicon_identifiers,
+            compatibility="override",
+        )
+
     @property
     def diagnostics(self) -> FrontendDiagnostics:
         backend_diagnostics = getattr(self.backend, "diagnostics", None)
@@ -50,15 +100,25 @@ class PiperFrontend:
             phoneme_type=self.config.phoneme_type.value,
             backend=backend_diagnostics.implementation if backend_diagnostics else type(self.backend).__name__,
             backend_diagnostics=backend_diagnostics,
+            lexicon=self._lexicon_diagnostics(),
         )
 
     def phonemize_prepared(self, text: str) -> PhonemizeResult:
         if self.config.phoneme_type is PhonemeType.ESPEAK:
             segments = parse_raw_blocks(text)
-            groups = compose_raw_segments(
-                segments,
-                lambda value: self.backend.phonemize(value, voice=self.config.espeak_voice),
-            )
+            if self._lexicon_enabled:
+                lookup = self._ensure_lexicon_backend()
+                groups = compose_lexicon_overlay(
+                    segments,
+                    lookup,
+                    lambda value: self.backend.phonemize(value, voice=self.config.espeak_voice),
+                    vowel_clusters=self.config.vowel_clusters,
+                )
+            else:
+                groups = compose_raw_segments(
+                    segments,
+                    lambda value: self.backend.phonemize(value, voice=self.config.espeak_voice),
+                )
         else:
             groups = self.backend.phonemize(text, voice=self.config.espeak_voice)
         sentences: list[PhonemeSentence] = []
@@ -87,6 +147,9 @@ class PiperFrontend:
         close = getattr(self.backend, "close", None)
         if close is not None:
             close()
+        if self._owns_lexicon_backend and self._lexicon_backend is not None:
+            self._lexicon_backend.close()
+            self._lexicon_backend = None
 
     def __enter__(self) -> PiperFrontend:
         return self

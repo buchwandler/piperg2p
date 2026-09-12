@@ -14,6 +14,18 @@ class EspeakPaths:
     executable: str | None = None
     library: str | None = None
     data: str | None = None
+    source: str = "system"
+
+def _modern_loader_paths() -> tuple[str | None, str | None] | None:
+    try:
+        import espeakng_loader  # type: ignore[import-untyped]
+    except ImportError:
+        return None
+    library = espeakng_loader.get_library_path()
+    data = espeakng_loader.get_data_path()
+    if library and Path(library).is_file():
+        return str(library), str(data) if data else None
+    return None
 
 
 def find_executable(explicit: str | None = None) -> str:
@@ -34,6 +46,9 @@ def find_library(explicit: str | None = None, executable: str | None = None) -> 
         if Path(candidate).is_file() or shutil.which(candidate):
             return candidate
         raise BackendUnavailableError(f"configured eSpeak library does not exist: {candidate}")
+    packaged = _modern_loader_paths()
+    if packaged is not None:
+        return packaged[0]
     for name in ("espeak-ng", "espeak"):
         found = ctypes.util.find_library(name)
         if found:
@@ -45,7 +60,6 @@ def find_library(explicit: str | None = None, executable: str | None = None) -> 
             return str(candidates[0])
     return None
 
-
 def find_data(explicit: str | None = None, executable: str | None = None, library: str | None = None) -> str | None:
     candidate = explicit or os.environ.get("PIPERG2P_ESPEAK_DATA")
     if candidate:
@@ -53,6 +67,9 @@ def find_data(explicit: str | None = None, executable: str | None = None, librar
         if path.is_dir():
             return str(path)
         raise BackendUnavailableError(f"configured eSpeak data directory does not exist: {candidate}")
+    packaged = _modern_loader_paths()
+    if packaged is not None and packaged[1] is not None:
+        return packaged[1]
     candidates: list[Path] = []
     for value in (executable, library):
         if value and "/" in value:
@@ -73,7 +90,29 @@ def discover(
     data: str | None = None,
     require_executable: bool = True,
 ) -> EspeakPaths:
+    configured = any(
+        value is not None
+        for value in (
+            executable,
+            library,
+            data,
+            os.environ.get("PIPERG2P_ESPEAK_EXECUTABLE"),
+            os.environ.get("PIPERG2P_ESPEAK_LIBRARY"),
+            os.environ.get("PIPERG2P_ESPEAK_DATA"),
+        )
+    )
     exe = find_executable(executable) if require_executable or executable else None
     lib = find_library(library, exe)
     data_path = find_data(data, exe, lib)
-    return EspeakPaths(exe, lib, data_path)
+    packaged = _modern_loader_paths()
+    if configured:
+        source = "explicit"
+    elif packaged is not None and lib == packaged[0]:
+        source = "modern-loader"
+    elif lib == ctypes.util.find_library("espeak-ng") and lib is not None:
+        source = "system-espeak-ng"
+    elif lib is not None:
+        source = "system-espeak"
+    else:
+        source = "unknown"
+    return EspeakPaths(exe, lib, data_path, source)

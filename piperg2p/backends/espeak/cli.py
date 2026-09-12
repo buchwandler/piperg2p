@@ -20,12 +20,14 @@ class EspeakCliBackend:
         paths = discover(executable=self.executable, data=self.data_path)
         self.executable = paths.executable
         self.data_path = paths.data
+        self.discovery_source = paths.source
         self._diagnostics = BackendDiagnostics(
             requested_mode="cli",
             implementation="cli",
             executable=self.executable,
             data_path=self.data_path,
             parity="best-effort",
+            discovery_source=self.discovery_source,
         )
 
     @property

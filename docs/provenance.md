@@ -12,4 +12,10 @@ This project is implemented independently under Apache-2.0. The compatibility re
 | Raw blocks | Observed eSpeak/Piper behavior | Use a small state-machine parser and independent composition helper. |
 | CLI fallback | Existing project behavior | Keep subprocess execution isolated, UTF-8, no shell, and label parity best-effort. |
 
+| Lexphon managed assets | Lexphon public data/profile APIs | Keep installation, verification, and normalization in the optional adapter. |
+| G2Lex local assets | G2Lex public open/lookup APIs | Keep direct lookup narrow, ordered, and exact-key. |
+| Lexicon overlay | User-provided implementation guide | Preserve Piper sentence/model encoding ownership in PiperG2P. |
+| KokoroG2P | Architectural reference only | Reuse lifecycle ideas without copying source or tests. |
+
+eSpeak-derived test assets are generated during tests from declared source words and pronunciations. Production dictionaries are not bundled for test convenience.
 No Piper source, comments, tests, lookup tables, model files, bundled resources, or runtime import is used. The pinned upstream identity in the benchmark metadata is historical evidence, not code to port.

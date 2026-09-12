@@ -35,6 +35,22 @@ class ResourceUnavailableError(ResourceError):
     """An optional resource is not installed or usable."""
 
 
+
+class LexiconError(PiperG2PError):
+    """Base class for lexicon overlay failures."""
+
+
+class LexiconDependencyError(LexiconError):
+    """An optional lexicon package is not installed."""
+
+
+class LexiconResourceError(LexiconError):
+    """A requested lexicon asset or runtime is invalid or unavailable."""
+
+
+class LexiconConfigurationError(LexiconError):
+    """Lexicon options are incompatible with the selected frontend."""
+
 class MissingPhonemeError(PiperG2PError, KeyError):
     """A required phoneme is absent from the selected voice map."""
 

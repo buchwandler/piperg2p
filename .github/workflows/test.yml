@@ -21,3 +21,30 @@ jobs:
       - run: python -m pip install -e '.[dev]'
       - run: pytest -q
       - run: python -m build
+
+  espeak-exact:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: sudo apt-get update
+      - run: sudo apt-get install --yes espeak-ng libespeak-ng-dev
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e '.[dev]'
+      - run: pytest -q -m espeak tests/test_clause_backend.py tests/test_espeak_exact_contract.py tests/test_real_optional_integration.py
+      - run: ruff check .
+      - run: python -m build
+
+  lexicons:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e '.[dev,lexicons]'
+      - run: pytest -q tests/test_lexicon_adapters.py tests/test_lexicon_spans.py tests/test_lexicon_overlay.py tests/test_lexicon_overlay_extra.py tests/test_real_optional_integration.py
+      - run: ruff check .
