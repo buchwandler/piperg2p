@@ -4,9 +4,12 @@ from piperg2p import (
     ConfigError,
     PhonemeType,
     PiperConfig,
+    PiperFrontend,
+    UnsupportedCompatibilityError,
     UnsupportedPhonemeTypeError,
     VoiceConfig,
 )
+from piperg2p.registry import REGISTRY
 
 
 def raw_config(**updates):
@@ -51,6 +54,19 @@ def test_config_rejects_unknown_phoneme_type_and_bad_ids():
         VoiceConfig.from_dict(raw_config(phoneme_id_map={"_": 0, "^": 1, "$": -1}))
     with pytest.raises(ConfigError, match="outside"):
         VoiceConfig.from_dict(raw_config(num_symbols=3))
+
+def test_arabic_espeak_profile_is_explicitly_unsupported():
+    config = VoiceConfig.from_dict(
+        raw_config(phoneme_type="espeak", espeak={"voice": "ar"})
+    )
+    with pytest.raises(UnsupportedCompatibilityError, match="Arabic Piper eSpeak preprocessing"):
+        PiperFrontend(config)
+
+def test_deferred_frontends_are_not_advertised_as_implemented():
+    for phoneme_type in (PhonemeType.PINYIN, PhonemeType.HEBREW, PhonemeType.JAPANESE, PhonemeType.THAI):
+        spec = REGISTRY[phoneme_type]
+        assert not spec.implemented
+        assert spec.backend_factory is None
 
 
 def test_vowel_clusters_validate_merged_symbol():

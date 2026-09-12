@@ -8,13 +8,21 @@ from .backends import EspeakBackend, PhonemeBackend
 from .codec import EncodeResult, MissingPhonemePolicy
 from .config import PhonemeType, VoiceConfig
 from .diagnostics import FrontendDiagnostics
-from .errors import LexiconConfigurationError, UnsupportedPhonemeTypeError
+from .errors import (
+    LexiconConfigurationError,
+    UnsupportedCompatibilityError,
+    UnsupportedPhonemeTypeError,
+)
 from .lexicons.base import LexiconDiagnostics, PronunciationLookup
 from .lexicons.overlay import compose_lexicon_overlay
 from .raw_blocks import compose_raw_segments, parse_raw_blocks
 from .registry import spec_for
 from .types import PhonemeSentence, PhonemizeResult
 
+
+def _is_arabic_voice(voice: str) -> bool:
+    normalized = voice.casefold().replace("_", "-")
+    return normalized == "ar" or normalized.startswith(("ar-", "ar+"))
 
 class PiperFrontend:
     """Voice-config-driven Piper frontend independent from Piper's runtime."""
@@ -32,6 +40,11 @@ class PiperFrontend:
         self.config = config
         self.missing = MissingPhonemePolicy(missing)
         self._spec = spec_for(config)
+        if config.phoneme_type is PhonemeType.ESPEAK and _is_arabic_voice(config.espeak_voice):
+            raise UnsupportedCompatibilityError(
+                "Arabic Piper eSpeak preprocessing is not implemented; "
+                "ordinary eSpeak compatibility is unavailable for Arabic voices"
+            )
         self._lexicon_identifiers = tuple(lexicons)
         if self._lexicon_identifiers and lexicon_backend is not None:
             raise LexiconConfigurationError("lexicons and lexicon_backend are mutually exclusive")
@@ -55,10 +68,14 @@ class PiperFrontend:
                     vowel_clusters=self.config.vowel_clusters,
                     merge_vowel_clusters=False,
                 )
+            assert self._spec.backend_factory is not None
             return self._spec.backend_factory(self.config)
-        raise UnsupportedPhonemeTypeError(
-            f"phoneme_type {self.config.phoneme_type.value!r} requires optional extra {self._spec.optional_extra!r}"
-        )
+        if not self._spec.implemented or self._spec.backend_factory is None:
+            extra = f" Install piperg2p[{self._spec.optional_extra}]." if self._spec.optional_extra else ""
+            raise UnsupportedPhonemeTypeError(
+                f"phoneme_type {self.config.phoneme_type.value!r} is recognized but not implemented.{extra}"
+            )
+        return self._spec.backend_factory(self.config)
 
     def _ensure_lexicon_backend(self) -> PronunciationLookup:
         if self._lexicon_backend is not None:

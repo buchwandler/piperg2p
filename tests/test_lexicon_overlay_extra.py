@@ -72,6 +72,25 @@ def test_lexicon_pronunciation_is_normalized_to_nfd():
     )
     assert groups == [["e", "\u0301"]]
 
+def test_ipa3_lexicon_hit_preserves_raw_symbol_stream():
+    class IPA3Lookup:
+        @property
+        def diagnostics(self):
+            return LexiconDiagnostics(True, "fake", "en-us", ("fake",), "piper-espeak-frozen")
+
+        def lookup_many(self, words, *, tag=None):
+            return tuple(
+                LexiconPronunciation("é", "fake", matched_key=word, source_encoding="espeak-ipa3")
+                for word in words
+            )
+
+    groups = compose_lexicon_overlay(
+        parse_raw_blocks("known"),
+        IPA3Lookup(),
+        lambda text: [],
+    )
+    assert groups == [["é"]]
+
 
 def test_vowel_clusters_merge_after_raw_and_lexicon_composition():
     lookup = FakeLookup({"known": "a"})

@@ -6,9 +6,10 @@ The configuration enum recognizes the six current Piper phoneme type names:
 | --- | --- |
 | `text` | implemented in core |
 | `espeak` | native and CLI backends implemented |
-| `pinyin` | encoder scaffold only, provider deferred |
-| `japanese` | deferred |
-| `thai` | deferred |
-| `hebrew` | deferred |
+| `pinyin` | recognized configuration value, unavailable |
+| `japanese` | recognized configuration value, unavailable |
+| `thai` | recognized configuration value, unavailable |
+| `hebrew` | recognized configuration value, unavailable |
+| Arabic eSpeak voice | explicitly blocked until preprocessing is implemented |
 
-Selecting a deferred type without a custom backend raises an actionable `UnsupportedPhonemeTypeError`. Optional language dependencies are not imported by the core package.
+Selecting a deferred type without a custom backend raises an actionable `UnsupportedPhonemeTypeError`. Arabic eSpeak profiles raise `UnsupportedCompatibilityError`. Optional language dependencies are not imported by the core package.

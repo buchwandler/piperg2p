@@ -22,7 +22,7 @@ from piperg2p import PiperFrontend
 
 frontend = PiperFrontend.from_config(
     "voice.onnx.json",
-    lexicons=("de-de:espeak",),
+    lexicons=("de-de:espeak-piper",),
 )
 ```
 
@@ -49,8 +49,7 @@ frontend = PiperFrontend.from_config(
 )
 ```
 
-The direct adapter uses exact keys and configured path order. It is intended for local development before assets are installed into Lexphon. Production profile and encoding normalization belongs in Lexphon. Direct V1 assets must use IPA/Unicode IPA metadata when that metadata is present.
-
+The direct adapter uses exact keys and configured path order. It is intended for local development before assets are installed into Lexphon. Built-in adapters read the modern `phoneme_encoding` metadata, accept generic IPA and `espeak-ipa3`, and reject unsupported kinds, languages, or encodings.
 Injected adapters are owned by the caller. Adapters created internally from `lexicons=` are closed by `PiperFrontend`.
 
 ## Precedence and composition
@@ -62,13 +61,12 @@ The precedence order is:
 3. PiperG2P eSpeak fallback for unresolved source intervals.
 4. The configured model missing-symbol policy during ID encoding.
 
-Words are scanned without discarding punctuation or source whitespace. Lookup is batched per ordinary source segment. Unresolved intervals are coalesced so eSpeak retains context, while explicit raw and lexical segments remain in source order. Final phonemes use NFD normalization and vowel-cluster merging before voice-specific ID encoding.
+Words are scanned without discarding punctuation or source whitespace. Lookup is batched per ordinary source segment. Unresolved intervals are coalesced so eSpeak retains context, while explicit raw and lexical segments remain in source order. Generic IPA hits use NFD normalization. `espeak-ipa3` hits are preserved as Piper raw phoneme content. Final IDs always use the voice-specific map and selected missing-symbol policy.
 
 A lexicon hit containing a symbol absent from the voice map is not silently replaced by eSpeak. `error`, `warn`, and `ignore` follow the normal encoder policy.
 
 ## Diagnostics and reproducibility
-
-`result.diagnostics.lexicon` reports whether the overlay is enabled, its implementation, language, identifiers, and compatibility label. Asset provenance and the eSpeak version used to generate or consume an asset should be recorded by the asset producer. A frozen eSpeak-derived dictionary combined with a different live eSpeak version can produce mixed-version output.
+`result.diagnostics.lexicon` reports whether the overlay is enabled, its implementation, language, identifiers, encodings, immutable asset provenance, and compatibility label. The labels distinguish generic IPA overrides from Piper frozen eSpeak assets. Asset provenance should include data version, producer, transform, and generator identity when supplied. A frozen eSpeak-derived dictionary combined with a different live eSpeak version can produce mixed-version output, so lexicon-first output is an extension rather than an unqualified exactness claim.
 
 Lexicon lookup/resource failures are errors, not normal misses. Optional packages are imported only when an adapter is selected. Core imports and eSpeak-only frontends do not require Lexphon or G2Lex.
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "piperg2p"
-version = "0.2.0"
+dynamic = ["version"]
 description = "Independent Piper-compatible text/phoneme/id frontend for Piper ONNX voice configs"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,7 +23,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "pytest-cov>=4", "ruff>=0.6", "mypy>=1.10", "build>=1"]
+dev = ["pytest>=7", "pytest-cov>=4", "ruff>=0.6", "mypy>=1.10", "build>=1", "twine>=5"]
 g2lex = ["g2lex>=0.1.8,<0.2"]
 lexphon = ["lexphon>=0.2.3,<0.3"]
 espeak-direct = [
@@ -31,14 +31,10 @@ espeak-direct = [
   "dlinfo>=1.2.1; sys_platform != 'win32' and sys_platform != 'android'",
 ]
 lexicons = ["lexphon>=0.2.3,<0.3"]
-zh = []
-ja = []
-th = []
-he = []
-ar = []
 
 [project.urls]
-Repository = "https://github.com/example/piperg2p"
+Repository = "https://github.com/buchwandler/piperg2p"
+Homepage = "https://github.com/buchwandler/piperg2p"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -56,3 +52,6 @@ markers = [
 
 [tool.ruff.lint]
 ignore = ["PYI034", "UP037"]
+
+[tool.setuptools.dynamic]
+version = {attr = "piperg2p.__version__"}

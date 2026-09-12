@@ -37,6 +37,15 @@ def _coalesce_text_segments(segments: Iterable[PreparedSegment]) -> tuple[Prepar
     return tuple(result)
 
 
+def _prepare_lexicon_pronunciation(pronunciation) -> str:
+    """Prepare a lexicon hit according to its declared source encoding."""
+    encoding = pronunciation.source_encoding or "ipa"
+    if encoding == "espeak-ipa3":
+        return pronunciation.pronunciation
+    if encoding == "ipa":
+        return unicodedata.normalize("NFD", pronunciation.pronunciation)
+    raise LexiconResourceError(f"unsupported lexicon pronunciation encoding {encoding!r}")
+
 def overlay_text_segment(
     segment: PreparedSegment,
     lookup: PronunciationLookup,
@@ -66,7 +75,7 @@ def overlay_text_segment(
             prepared.append(
                 PreparedSegment(
                     "phonemes",
-                    unicodedata.normalize("NFD", pronunciation.pronunciation),
+                    _prepare_lexicon_pronunciation(pronunciation),
                     start,
                     end,
                     pronunciation.source,

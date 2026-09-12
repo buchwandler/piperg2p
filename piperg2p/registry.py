@@ -12,9 +12,11 @@ from .errors import UnsupportedPhonemeTypeError
 @dataclass(frozen=True)
 class FrontendSpec:
     phoneme_type: PhonemeType
-    backend_factory: Callable[[VoiceConfig], PhonemeBackend]
+    backend_factory: Callable[[VoiceConfig], PhonemeBackend] | None
     encoder: EncoderStrategy
     optional_extra: str | None = None
+    implemented: bool = True
+
 
 
 def _text_backend(config: VoiceConfig) -> TextBackend:
@@ -22,18 +24,29 @@ def _text_backend(config: VoiceConfig) -> TextBackend:
     return TextBackend()
 
 
+
 def _espeak_backend(config: VoiceConfig) -> EspeakBackend:
     return EspeakBackend(vowel_clusters=config.vowel_clusters)
+
 
 
 REGISTRY: dict[PhonemeType, FrontendSpec] = {
     PhonemeType.TEXT: FrontendSpec(PhonemeType.TEXT, _text_backend, OrdinaryEncoder()),
     PhonemeType.ESPEAK: FrontendSpec(PhonemeType.ESPEAK, _espeak_backend, OrdinaryEncoder()),
-    PhonemeType.PINYIN: FrontendSpec(PhonemeType.PINYIN, _text_backend, PinyinEncoder(), "zh"),
-    PhonemeType.HEBREW: FrontendSpec(PhonemeType.HEBREW, _text_backend, OrdinaryEncoder(), "he"),
-    PhonemeType.JAPANESE: FrontendSpec(PhonemeType.JAPANESE, _text_backend, OrdinaryEncoder(), "ja"),
-    PhonemeType.THAI: FrontendSpec(PhonemeType.THAI, _text_backend, OrdinaryEncoder(), "th"),
+    PhonemeType.PINYIN: FrontendSpec(
+        PhonemeType.PINYIN, None, PinyinEncoder(), "zh", False
+    ),
+    PhonemeType.HEBREW: FrontendSpec(
+        PhonemeType.HEBREW, None, OrdinaryEncoder(), "he", False
+    ),
+    PhonemeType.JAPANESE: FrontendSpec(
+        PhonemeType.JAPANESE, None, OrdinaryEncoder(), "ja", False
+    ),
+    PhonemeType.THAI: FrontendSpec(
+        PhonemeType.THAI, None, OrdinaryEncoder(), "th", False
+    ),
 }
+
 
 
 def spec_for(config: VoiceConfig) -> FrontendSpec:

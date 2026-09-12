@@ -15,6 +15,10 @@ class UnsupportedPhonemeTypeError(ConfigError):
     """The configuration names a frontend that is not supported."""
 
 
+
+class UnsupportedCompatibilityError(ConfigError):
+    """The recognized profile is outside the implemented compatibility boundary."""
+
 class BackendError(PiperG2PError):
     """Base class for backend failures."""
 

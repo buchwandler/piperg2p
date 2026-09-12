@@ -10,7 +10,7 @@
 - Sentence-grouped results and raw `[[ ... ]]` phoneme blocks in eSpeak mode.
 - Immutable diagnostics, typed configuration, errors, and missing-phoneme reporting.
 
-The native clause API is labeled `exact` only when it is available. The CLI path is always labeled `best-effort`. Pinyin, Japanese, Thai, Hebrew, and Arabic adapters are planned but are not part of this release.
+The native clause API is labeled `exact` only when it is available. The CLI path is always labeled `best-effort`. This release supports the named Piper Python `text` and ordinary `espeak` profile only. Pinyin, Hebrew, Japanese, and Thai are recognized configuration values but unavailable. Arabic eSpeak voices are rejected until Piper-compatible preprocessing is implemented.
 
 ## Install
 
@@ -39,6 +39,8 @@ The configured `phoneme_id_map` is authoritative. `result.ids` is a convenience 
 
 Lexicon support is an opt-in overlay on the existing eSpeak frontend. Install `piperg2p[lexphon]` for managed Lexphon identifiers or `piperg2p[g2lex]` for explicit local `.g2lex` files. Raw `[[...]]` blocks have precedence, lexicon misses use PiperG2P's eSpeak backend, and no dictionary downloads occur implicitly. See [docs/lexicons.md](docs/lexicons.md).
 
+
+Use `*:espeak` assets for generic IPA pronunciation overrides. Use `*:espeak-piper` assets for Piper raw phoneme behavior with `phoneme_encoding="espeak-ipa3"`. Lexphon installs and verifies data externally, while PiperG2P owns interpretation, precedence, and voice-map ID encoding.
 ## Compatibility
 
 Compatibility is measured against pinned reference profiles, not a moving upstream branch. See [docs/compatibility.md](docs/compatibility.md), [docs/espeak.md](docs/espeak.md), and [docs/provenance.md](docs/provenance.md).

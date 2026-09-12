@@ -1,14 +1,32 @@
 {
   "profile": {
-    "name": "piperg2p-phase1-core",
+    "name": "piperg2p-piper-python",
     "reference": "OHF-Voice/piper1-gpl",
+    "version": "1.8.0",
     "commit": "404aefedbd74baa0bd43e451bc407a2b3aace0f5",
-    "target": "piper-python-main",
-    "status": "metadata-only until reference subprocess is provisioned"
+    "target": "piper-python",
+    "status": "requires reviewed output from the pinned reference environment"
   },
   "cases": [
     {"id": "text-nfd", "phoneme_type": "text", "text": "Cafe\u0301", "policy": "exact"},
-    {"id": "espeak-punctuation", "phoneme_type": "espeak", "text": "Hello, world.", "policy": "diagnostic"},
-    {"id": "espeak-residual", "phoneme_type": "espeak", "text": "No terminal punctuation", "policy": "diagnostic"}
+    {"id": "text-composed", "phoneme_type": "text", "text": "Café", "policy": "exact"},
+    {"id": "espeak-comma", "phoneme_type": "espeak", "text": "Hello, world", "policy": "exact"},
+    {"id": "espeak-colon", "phoneme_type": "espeak", "text": "Ratio: two", "policy": "exact"},
+    {"id": "espeak-semicolon", "phoneme_type": "espeak", "text": "One; two", "policy": "exact"},
+    {"id": "espeak-terminal", "phoneme_type": "espeak", "text": "Hello.", "policy": "exact"},
+    {"id": "espeak-residual", "phoneme_type": "espeak", "text": "No terminal punctuation", "policy": "exact"},
+    {"id": "espeak-sentences", "phoneme_type": "espeak", "text": "First sentence. Second sentence?", "policy": "exact"},
+    {"id": "espeak-language-switch", "phoneme_type": "espeak", "text": "Hello (en) world", "policy": "exact"},
+    {"id": "raw-left", "phoneme_type": "espeak", "text": "[[hɛloʊ]] world", "policy": "exact"},
+    {"id": "raw-middle", "phoneme_type": "espeak", "text": "hello [[hɛloʊ]] world", "policy": "exact"},
+    {"id": "raw-right", "phoneme_type": "espeak", "text": "hello [[hɛloʊ]]", "policy": "exact"},
+    {"id": "raw-spaces", "phoneme_type": "espeak", "text": "hello[[hɛloʊ]] world", "policy": "exact"},
+    {"id": "vowel-clusters", "phoneme_type": "espeak", "text": "Hello", "policy": "exact"},
+    {"id": "missing-voice-symbol", "phoneme_type": "text", "text": "?", "policy": "piper-like-warning"},
+    {"id": "ipa3-lexicon-hit", "phoneme_type": "espeak", "text": "church", "policy": "overlay"},
+    {"id": "ipa3-lexicon-miss", "phoneme_type": "espeak", "text": "unknown", "policy": "overlay"},
+    {"id": "mixed-hit-miss", "phoneme_type": "espeak", "text": "church unknown", "policy": "overlay"},
+    {"id": "ipa3-tie-joiner", "phoneme_type": "espeak", "text": "church", "policy": "encoded-id"},
+    {"id": "arabic-policy", "phoneme_type": "espeak", "voice": "ar", "text": "مرحبا", "policy": "unsupported"}
   ]
 }

@@ -14,6 +14,8 @@ This project is implemented independently under Apache-2.0. The compatibility re
 
 | Lexphon managed assets | Lexphon public data/profile APIs | Keep installation, verification, and normalization in the optional adapter. |
 | G2Lex local assets | G2Lex public open/lookup APIs | Keep direct lookup narrow, ordered, and exact-key. |
+
+PiperG2P preserves `phoneme_encoding`, lexicon ID, data version, producer, transform, and generator identity from built-in assets. `ipa` is a generic override. `espeak-ipa3` is a Piper raw pronunciation representation and is not normalized by Lexphon.
 | Lexicon overlay | User-provided implementation guide | Preserve Piper sentence/model encoding ownership in PiperG2P. |
 | KokoroG2P | Architectural reference only | Reuse lifecycle ideas without copying source or tests. |
 

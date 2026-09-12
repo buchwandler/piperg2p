@@ -37,6 +37,7 @@ from .errors import (
     PiperG2PWarning,
     ResourceError,
     ResourceUnavailableError,
+    UnsupportedCompatibilityError,
     UnsupportedPhonemeTypeError,
 )
 from .frontend import PiperFrontend
@@ -88,6 +89,7 @@ __all__ = [
     "ResourceUnavailableError",
     "TextBackend",
     "TextSegment",
+    "UnsupportedCompatibilityError",
     "UnsupportedPhonemeTypeError",
     "VoiceConfig",
     "compose_raw_segments",
