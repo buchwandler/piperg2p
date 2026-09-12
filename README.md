@@ -1,3 +1,8 @@
+[![PyPI - Version](https://img.shields.io/pypi/v/piperg2p)](https://pypi.org/project/piperg2p/)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/piperg2p)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/piperg2p)
+[![codecov](https://codecov.io/gh/buchwandler/piperg2p/graph/badge.svg?token=eMF0pdgARs)](https://codecov.io/gh/buchwandler/piperg2p)
+
 # piperg2p
 
 `piperg2p` is an independent, voice-config-driven Piper-compatible frontend. It produces phoneme sequences and model IDs from Piper ONNX voice configurations. It does not synthesize audio, require Piper, or include Piper source or model data.
