@@ -39,8 +39,8 @@ The configured `phoneme_id_map` is authoritative. `result.ids` is a convenience 
 
 Lexicon support is an opt-in overlay on the existing eSpeak frontend. Install `piperg2p[lexphon]` for managed Lexphon identifiers or `piperg2p[g2lex]` for explicit local `.g2lex` files. Raw `[[...]]` blocks have precedence, lexicon misses use PiperG2P's eSpeak backend, and no dictionary downloads occur implicitly. See [docs/lexicons.md](docs/lexicons.md).
 
-
 Use `*:espeak` assets for generic IPA pronunciation overrides. Use `*:espeak-piper` assets for Piper raw phoneme behavior with `phoneme_encoding="espeak-ipa3"`. Lexphon installs and verifies data externally, while PiperG2P owns interpretation, precedence, and voice-map ID encoding.
+
 ## Compatibility
 
 Compatibility is measured against pinned reference profiles, not a moving upstream branch. See [docs/compatibility.md](docs/compatibility.md), [docs/espeak.md](docs/espeak.md), and [docs/provenance.md](docs/provenance.md).

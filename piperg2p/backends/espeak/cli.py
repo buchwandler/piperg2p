@@ -50,7 +50,9 @@ class EspeakCliBackend:
         except (OSError, subprocess.SubprocessError) as exc:
             raise PhonemizationError(f"eSpeak CLI invocation failed: {exc}") from exc
         if process.returncode:
-            raise PhonemizationError(f"eSpeak failed ({process.returncode}): {process.stderr.strip()}")
+            raise PhonemizationError(
+                f"eSpeak failed ({process.returncode}): {process.stderr.strip()}"
+            )
         return process.stdout.strip("\r\n ")
 
     def phonemize(self, text: str, *, voice: str) -> list[list[str]]:

@@ -99,7 +99,9 @@ def _config():
 def test_frontend_reports_injected_lexicon_and_closes_only_owned_backend():
     lookup = FakeLookup({"known": "Q"})
     backend = FakeBackend()
-    frontend = PiperFrontend(_config(), backend=backend, lexicon_backend=lookup, missing="error")
+    frontend = PiperFrontend(
+        _config(), backend=backend, lexicon_backend=lookup, missing="error"
+    )
     result = frontend.phonemize("known unknown")
     assert result.diagnostics.lexicon.implementation == "fake"
     assert result.sentences[0].phonemes == ("Q", " ", "u", "n", "k", "n", "o", "w", "n")
@@ -121,10 +123,17 @@ def test_frontend_rejects_lexicons_for_non_espeak_and_conflicting_sources():
     with pytest.raises(LexiconConfigurationError, match="only supports"):
         PiperFrontend(text_config, lexicons=("id",), backend=FakeBackend())
     with pytest.raises(LexiconConfigurationError, match="mutually exclusive"):
-        PiperFrontend(_config(), lexicons=("id",), lexicon_backend=FakeLookup({}), backend=FakeBackend())
+        PiperFrontend(
+            _config(),
+            lexicons=("id",),
+            lexicon_backend=FakeLookup({}),
+            backend=FakeBackend(),
+        )
 
 
 def test_unencodable_hit_uses_existing_missing_policy():
     lookup = FakeLookup({"known": "Z"})
     with pytest.raises(MissingPhonemeError):
-        PiperFrontend(_config(), backend=FakeBackend(), lexicon_backend=lookup, missing="error").phonemize("known")
+        PiperFrontend(
+            _config(), backend=FakeBackend(), lexicon_backend=lookup, missing="error"
+        ).phonemize("known")

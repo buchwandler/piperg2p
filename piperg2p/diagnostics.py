@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .lexicons.base import LexiconDiagnostics
 
+
 @dataclass(frozen=True)
 class BackendDiagnostics:
     requested_mode: str = "text"

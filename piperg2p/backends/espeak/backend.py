@@ -33,7 +33,8 @@ class EspeakBackend:
                     executable=self.executable,
                     library=self.library,
                     data=self.data,
-                    require_executable=self.mode == "auto" or self.executable is not None,
+                    require_executable=self.mode == "auto"
+                    or self.executable is not None,
                 )
                 self._provider = NativeEspeakProvider(
                     library=paths.library,
@@ -52,7 +53,9 @@ class EspeakBackend:
             self._provider = EspeakCliBackend(
                 executable=self.executable,
                 data_path=self.data,
-                vowel_clusters=self.vowel_clusters if self.merge_vowel_clusters else frozenset(),
+                vowel_clusters=self.vowel_clusters
+                if self.merge_vowel_clusters
+                else frozenset(),
                 timeout=self.timeout,
             )
         provider_diagnostics = self._provider.diagnostics
@@ -103,7 +106,7 @@ class EspeakBackend:
     def close(self) -> None:
         self._provider.close()
 
-    def __enter__(self) -> "EspeakBackend":
+    def __enter__(self) -> EspeakBackend:
         return self
 
     def __exit__(self, *_: object) -> None:

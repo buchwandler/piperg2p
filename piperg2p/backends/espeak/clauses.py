@@ -15,7 +15,9 @@ class Clause:
     sentence_end: bool = False
 
 
-def merge_vowel_clusters(phones: list[str], clusters: frozenset[tuple[str, ...]]) -> list[str]:
+def merge_vowel_clusters(
+    phones: list[str], clusters: frozenset[tuple[str, ...]]
+) -> list[str]:
     if not clusters:
         return phones
     max_length = max((len(cluster) for cluster in clusters), default=0)

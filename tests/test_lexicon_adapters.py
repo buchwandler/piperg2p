@@ -39,7 +39,11 @@ def test_lexphon_resolves_installed_assets_and_uses_g2lex(monkeypatch, tmp_path)
         def __init__(self, path):
             self.path = path
             self.metadata = {
-                "id": next(identifier for identifier, value in paths.items() if str(value) == path),
+                "id": next(
+                    identifier
+                    for identifier, value in paths.items()
+                    if str(value) == path
+                ),
                 "language": "de-DE",
                 "kind": "pronunciation",
                 "phoneme_encoding": "espeak-ipa3",
@@ -72,7 +76,10 @@ def test_lexphon_resolves_installed_assets_and_uses_g2lex(monkeypatch, tmp_path)
         "metadata:de-de:second",
         "path:de-de:second",
     ]
-    assert calls == [(str(paths["de-de:first"]), "proper"), (str(paths["de-de:second"]), "proper")]
+    assert calls == [
+        (str(paths["de-de:first"]), "proper"),
+        (str(paths["de-de:second"]), "proper"),
+    ]
     lookup.close()
     lookup.close()
 
@@ -88,7 +95,9 @@ def test_lexphon_resource_errors_are_not_misses(monkeypatch):
         def metadata(self, identifier):
             raise RuntimeError("not installed")
 
-    monkeypatch.setitem(sys.modules, "lexphon", types.SimpleNamespace(DataStore=DataStore))
+    monkeypatch.setitem(
+        sys.modules, "lexphon", types.SimpleNamespace(DataStore=DataStore)
+    )
     with pytest.raises(LexiconResourceError, match="Could not resolve Lexphon"):
         LexphonLookup("en-us", ("missing",), store=DataStore()).lookup("word")
 
@@ -128,7 +137,9 @@ def test_g2lex_preserves_asset_order_and_forwards_tag(monkeypatch, tmp_path):
     assert assets[second.name].closed
 
 
-def test_g2lex_existing_asset_without_dependency_has_dependency_error(monkeypatch, tmp_path):
+def test_g2lex_existing_asset_without_dependency_has_dependency_error(
+    monkeypatch, tmp_path
+):
     asset = tmp_path / "existing.g2lex"
     asset.write_bytes(b"placeholder")
     monkeypatch.setitem(sys.modules, "g2lex", None)
@@ -158,7 +169,9 @@ def test_g2lex_recognizes_modern_encoding_and_provenance(monkeypatch, tmp_path):
         def close(self):
             pass
 
-    monkeypatch.setitem(sys.modules, "g2lex", types.SimpleNamespace(open=lambda path: Asset()))
+    monkeypatch.setitem(
+        sys.modules, "g2lex", types.SimpleNamespace(open=lambda path: Asset())
+    )
     with G2LexLookup((asset_path,), language="en-us") as lookup:
         pronunciation = lookup.lookup("church")
         assert pronunciation is not None
@@ -173,14 +186,20 @@ def test_g2lex_rejects_unsupported_modern_encoding(monkeypatch, tmp_path):
     asset_path.write_bytes(b"placeholder")
 
     class Asset:
-        metadata: ClassVar[dict[str, str]] = {"kind": "pronunciation", "phoneme_encoding": "arpabet"}
+        metadata: ClassVar[dict[str, str]] = {
+            "kind": "pronunciation",
+            "phoneme_encoding": "arpabet",
+        }
 
         def close(self):
             pass
 
-    monkeypatch.setitem(sys.modules, "g2lex", types.SimpleNamespace(open=lambda path: Asset()))
+    monkeypatch.setitem(
+        sys.modules, "g2lex", types.SimpleNamespace(open=lambda path: Asset())
+    )
     with pytest.raises(LexiconResourceError, match="unsupported phoneme encoding"):
         G2LexLookup((asset_path,)).lookup("word")
+
 
 def test_g2lex_missing_asset_has_focused_error():
     with pytest.raises(LexiconResourceError, match="does not exist"):

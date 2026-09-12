@@ -15,9 +15,9 @@ class UnsupportedPhonemeTypeError(ConfigError):
     """The configuration names a frontend that is not supported."""
 
 
-
 class UnsupportedCompatibilityError(ConfigError):
     """The recognized profile is outside the implemented compatibility boundary."""
+
 
 class BackendError(PiperG2PError):
     """Base class for backend failures."""
@@ -39,7 +39,6 @@ class ResourceUnavailableError(ResourceError):
     """An optional resource is not installed or usable."""
 
 
-
 class LexiconError(PiperG2PError):
     """Base class for lexicon overlay failures."""
 
@@ -54,6 +53,7 @@ class LexiconResourceError(LexiconError):
 
 class LexiconConfigurationError(LexiconError):
     """Lexicon options are incompatible with the selected frontend."""
+
 
 class MissingPhonemeError(PiperG2PError, KeyError):
     """A required phoneme is absent from the selected voice map."""

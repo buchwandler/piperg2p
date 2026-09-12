@@ -66,6 +66,7 @@ Words are scanned without discarding punctuation or source whitespace. Lookup is
 A lexicon hit containing a symbol absent from the voice map is not silently replaced by eSpeak. `error`, `warn`, and `ignore` follow the normal encoder policy.
 
 ## Diagnostics and reproducibility
+
 `result.diagnostics.lexicon` reports whether the overlay is enabled, its implementation, language, identifiers, encodings, immutable asset provenance, and compatibility label. The labels distinguish generic IPA overrides from Piper frozen eSpeak assets. Asset provenance should include data version, producer, transform, and generator identity when supplied. A frozen eSpeak-derived dictionary combined with a different live eSpeak version can produce mixed-version output, so lexicon-first output is an extension rather than an unqualified exactness claim.
 
 Lexicon lookup/resource failures are errors, not normal misses. Optional packages are imported only when an adapter is selected. Core imports and eSpeak-only frontends do not require Lexphon or G2Lex.

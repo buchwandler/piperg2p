@@ -28,8 +28,12 @@ def test_clause_composition_preserves_punctuation_and_normalizes():
 
 
 def test_clause_composition_removes_switches_and_merges_longest():
-    assert merge_vowel_clusters(["a", "b", "c"], frozenset({("a", "b"), ("a", "b", "c")})) == ["abc"]
-    assert compose_clauses([Clause("a(b)\u0301", None, False)], frozenset()) == [["a", "\u0301"]]
+    assert merge_vowel_clusters(
+        ["a", "b", "c"], frozenset({("a", "b"), ("a", "b", "c")})
+    ) == ["abc"]
+    assert compose_clauses([Clause("a(b)\u0301", None, False)], frozenset()) == [
+        ["a", "\u0301"]
+    ]
 
 
 def test_discovery_finds_explicit_executable(tmp_path):
@@ -76,6 +80,7 @@ def test_native_provider_can_initialize_if_library_is_installed():
             assert provider.diagnostics.parity == "best-effort"
     finally:
         provider.close()
+
 
 def test_auto_backend_prefers_native_or_diagnoses_cli():
     with warnings.catch_warnings(record=True) as caught:

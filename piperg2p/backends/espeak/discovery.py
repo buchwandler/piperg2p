@@ -16,6 +16,7 @@ class EspeakPaths:
     data: str | None = None
     source: str = "system"
 
+
 def _modern_loader_paths() -> tuple[str | None, str | None] | None:
     try:
         import espeakng_loader  # type: ignore[import-untyped]
@@ -32,20 +33,32 @@ def find_executable(explicit: str | None = None) -> str:
     candidate = explicit or os.environ.get("PIPERG2P_ESPEAK_EXECUTABLE")
     if candidate:
         if Path(candidate).is_file() or shutil.which(candidate):
-            return str(Path(candidate)) if Path(candidate).is_file() else str(shutil.which(candidate))
-        raise BackendUnavailableError(f"configured eSpeak executable does not exist: {candidate}")
+            return (
+                str(Path(candidate))
+                if Path(candidate).is_file()
+                else str(shutil.which(candidate))
+            )
+        raise BackendUnavailableError(
+            f"configured eSpeak executable does not exist: {candidate}"
+        )
     found = shutil.which("espeak-ng") or shutil.which("espeak")
     if not found:
-        raise BackendUnavailableError("eSpeak was not found; install eSpeak NG or configure PIPERG2P_ESPEAK_EXECUTABLE")
+        raise BackendUnavailableError(
+            "eSpeak was not found; install eSpeak NG or configure PIPERG2P_ESPEAK_EXECUTABLE"
+        )
     return found
 
 
-def find_library(explicit: str | None = None, executable: str | None = None) -> str | None:
+def find_library(
+    explicit: str | None = None, executable: str | None = None
+) -> str | None:
     candidate = explicit or os.environ.get("PIPERG2P_ESPEAK_LIBRARY")
     if candidate:
         if Path(candidate).is_file() or shutil.which(candidate):
             return candidate
-        raise BackendUnavailableError(f"configured eSpeak library does not exist: {candidate}")
+        raise BackendUnavailableError(
+            f"configured eSpeak library does not exist: {candidate}"
+        )
     packaged = _modern_loader_paths()
     if packaged is not None:
         return packaged[0]
@@ -55,18 +68,27 @@ def find_library(explicit: str | None = None, executable: str | None = None) -> 
             return found
     if executable:
         root = Path(executable).resolve().parent.parent
-        candidates = list((root / "lib").glob("libespeak*.so*")) + list((root / "bin").glob("libespeak*.dll"))
+        candidates = list((root / "lib").glob("libespeak*.so*")) + list(
+            (root / "bin").glob("libespeak*.dll")
+        )
         if candidates:
             return str(candidates[0])
     return None
 
-def find_data(explicit: str | None = None, executable: str | None = None, library: str | None = None) -> str | None:
+
+def find_data(
+    explicit: str | None = None,
+    executable: str | None = None,
+    library: str | None = None,
+) -> str | None:
     candidate = explicit or os.environ.get("PIPERG2P_ESPEAK_DATA")
     if candidate:
         path = Path(candidate)
         if path.is_dir():
             return str(path)
-        raise BackendUnavailableError(f"configured eSpeak data directory does not exist: {candidate}")
+        raise BackendUnavailableError(
+            f"configured eSpeak data directory does not exist: {candidate}"
+        )
     packaged = _modern_loader_paths()
     if packaged is not None and packaged[1] is not None:
         return packaged[1]

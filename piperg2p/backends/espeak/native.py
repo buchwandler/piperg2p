@@ -35,22 +35,32 @@ class _NativeManager:
     def acquire(self, library_path: str | None, data_path: str | None) -> ctypes.CDLL:
         with self.lock:
             if library_path is None:
-                library_path = ctypes.util.find_library("espeak-ng") or ctypes.util.find_library("espeak")
+                library_path = ctypes.util.find_library(
+                    "espeak-ng"
+                ) or ctypes.util.find_library("espeak")
             if library_path is None:
-                raise BackendUnavailableError("eSpeak shared library was not found; configure PIPERG2P_ESPEAK_LIBRARY")
+                raise BackendUnavailableError(
+                    "eSpeak shared library was not found; configure PIPERG2P_ESPEAK_LIBRARY"
+                )
             if self.library is not None and self.path != library_path:
-                raise BackendUnavailableError("a different eSpeak library is already active in this process")
+                raise BackendUnavailableError(
+                    "a different eSpeak library is already active in this process"
+                )
             if self.library is None:
                 try:
                     self.library = ctypes.CDLL(library_path)
                 except OSError as exc:
-                    raise BackendUnavailableError(f"could not load eSpeak library {library_path!r}: {exc}") from exc
+                    raise BackendUnavailableError(
+                        f"could not load eSpeak library {library_path!r}: {exc}"
+                    ) from exc
                 self.path = library_path
                 self._configure_functions(self.library)
                 init_path = None
                 if data_path:
                     path = Path(data_path)
-                    init_path = str(path.parent if path.name == "espeak-ng-data" else path)
+                    init_path = str(
+                        path.parent if path.name == "espeak-ng-data" else path
+                    )
                 result = self.library.espeak_Initialize(
                     AUDIO_OUTPUT_SYNCHRONOUS,
                     0,
@@ -60,13 +70,19 @@ class _NativeManager:
                 if result < 0:
                     self.library = None
                     self.path = None
-                    raise BackendUnavailableError(f"eSpeak initialization failed with code {result}")
+                    raise BackendUnavailableError(
+                        f"eSpeak initialization failed with code {result}"
+                    )
                 if hasattr(self.library, "espeak_Info"):
                     reported = ctypes.c_char_p()
-                    self.library.espeak_Info.argtypes = [ctypes.POINTER(ctypes.c_char_p)]
+                    self.library.espeak_Info.argtypes = [
+                        ctypes.POINTER(ctypes.c_char_p)
+                    ]
                     self.library.espeak_Info.restype = ctypes.c_char_p
                     version = self.library.espeak_Info(ctypes.byref(reported))
-                    self.data_path = reported.value.decode() if reported.value else data_path
+                    self.data_path = (
+                        reported.value.decode() if reported.value else data_path
+                    )
                     self.version = version.decode() if version else None
                 else:
                     self.data_path = data_path
@@ -75,17 +91,31 @@ class _NativeManager:
 
     @staticmethod
     def _configure_functions(library: ctypes.CDLL) -> None:
-        library.espeak_Initialize.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
+        library.espeak_Initialize.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_int,
+        ]
         library.espeak_Initialize.restype = ctypes.c_int
         library.espeak_SetVoiceByName.argtypes = [ctypes.c_char_p]
         library.espeak_SetVoiceByName.restype = ctypes.c_int
         library.espeak_Terminate.argtypes = []
         library.espeak_Terminate.restype = ctypes.c_int
-        library.espeak_TextToPhonemes.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_int, ctypes.c_int]
+        library.espeak_TextToPhonemes.argtypes = [
+            ctypes.POINTER(ctypes.c_void_p),
+            ctypes.c_int,
+            ctypes.c_int,
+        ]
         library.espeak_TextToPhonemes.restype = ctypes.c_char_p
         if hasattr(library, "espeak_TextToPhonemesWithTerminator"):
             function = library.espeak_TextToPhonemesWithTerminator
-            function.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_int)]
+            function.argtypes = [
+                ctypes.POINTER(ctypes.c_void_p),
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.POINTER(ctypes.c_int),
+            ]
             function.restype = ctypes.c_char_p
 
     def release(self) -> None:
@@ -120,10 +150,14 @@ class NativeEspeakProvider:
         self.discovery_source = discovery_source
         self._closed = False
         self._library = _MANAGER.acquire(library, data)
-        self.exact_clause_api = hasattr(self._library, "espeak_TextToPhonemesWithTerminator")
+        self.exact_clause_api = hasattr(
+            self._library, "espeak_TextToPhonemesWithTerminator"
+        )
         if strict and not self.exact_clause_api:
             self.close()
-            raise BackendUnavailableError("loaded eSpeak library lacks espeak_TextToPhonemesWithTerminator")
+            raise BackendUnavailableError(
+                "loaded eSpeak library lacks espeak_TextToPhonemesWithTerminator"
+            )
         self.version = _MANAGER.version
         self.data_path = _MANAGER.data_path or data
 
@@ -149,7 +183,9 @@ class NativeEspeakProvider:
         with _MANAGER.lock:
             result = self._library.espeak_SetVoiceByName(voice.encode("utf-8"))
             if result != 0:
-                raise PhonemizationError(f"eSpeak voice {voice!r} was not found (code {result})")
+                raise PhonemizationError(
+                    f"eSpeak voice {voice!r} was not found (code {result})"
+                )
             buffer = ctypes.create_string_buffer(text.encode("utf-8") + b"\0")
             pointer = ctypes.c_void_p(ctypes.addressof(buffer))
             clauses: list[Clause] = []
@@ -158,14 +194,21 @@ class NativeEspeakProvider:
                 terminator = ctypes.c_int(0)
                 if self.exact_clause_api:
                     value = self._library.espeak_TextToPhonemesWithTerminator(
-                        ctypes.byref(pointer), CHARS_UTF8, IPA_OUTPUT, ctypes.byref(terminator)
+                        ctypes.byref(pointer),
+                        CHARS_UTF8,
+                        IPA_OUTPUT,
+                        ctypes.byref(terminator),
                     )
                 else:
-                    value = self._library.espeak_TextToPhonemes(ctypes.byref(pointer), CHARS_UTF8, IPA_OUTPUT)
+                    value = self._library.espeak_TextToPhonemes(
+                        ctypes.byref(pointer), CHARS_UTF8, IPA_OUTPUT
+                    )
                 if pointer.value == previous:
                     raise PhonemizationError("eSpeak clause API made no progress")
                 payload = value.decode("utf-8") if value else ""
-                token, sentence_end = _TERMINATORS.get(terminator.value & 0xFFF000, (None, False))
+                token, sentence_end = _TERMINATORS.get(
+                    terminator.value & 0xFFF000, (None, False)
+                )
                 clauses.append(Clause(payload, token, sentence_end))
             return clauses
 
@@ -174,7 +217,7 @@ class NativeEspeakProvider:
             self._closed = True
             _MANAGER.release()
 
-    def __enter__(self) -> "NativeEspeakProvider":
+    def __enter__(self) -> NativeEspeakProvider:
         return self
 
     def __exit__(self, *_: object) -> None:

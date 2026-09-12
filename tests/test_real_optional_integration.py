@@ -29,9 +29,13 @@ def test_auto_backend_reports_exact_or_cli_fallback():
             assert backend.diagnostics.exact_clause_api
         else:
             assert backend.diagnostics.implementation == "cli"
-            assert backend.diagnostics.fallback_reason in {
-                "terminator API unavailable",
-            } or backend.diagnostics.fallback_reason
+            assert (
+                backend.diagnostics.fallback_reason
+                in {
+                    "terminator API unavailable",
+                }
+                or backend.diagnostics.fallback_reason
+            )
     finally:
         backend.close()
 

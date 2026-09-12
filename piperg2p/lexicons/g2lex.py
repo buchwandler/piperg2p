@@ -17,7 +17,9 @@ from .base import (
 class G2LexLookup:
     """Lazy exact-key lookup over explicitly supplied G2Lex assets."""
 
-    def __init__(self, paths: Sequence[str | Path], *, language: str | None = None) -> None:
+    def __init__(
+        self, paths: Sequence[str | Path], *, language: str | None = None
+    ) -> None:
         self.paths = tuple(str(path) for path in paths)
         self.language = language
         self._assets: tuple[Any, ...] | None = None
@@ -64,7 +66,11 @@ class G2LexLookup:
     def _validate_asset(self, asset: Any, path: str) -> LexiconProvenance:
         metadata = self._metadata(asset)
         declared_language = self._metadata_value(metadata, "language", "locale")
-        if self.language and declared_language and not str(declared_language).lower().startswith(self.language.lower()):
+        if (
+            self.language
+            and declared_language
+            and not str(declared_language).lower().startswith(self.language.lower())
+        ):
             raise LexiconResourceError(
                 f"G2Lex asset {path!r} declares language {declared_language!r}, "
                 f"not requested {self.language!r}"
@@ -137,13 +143,19 @@ class G2LexLookup:
         except Exception as exc:
             for asset in assets:
                 asset.close()
-            failed_path = path if "path" in locals() else self.paths[0] if self.paths else ""
-            raise LexiconResourceError(f"Could not open G2Lex asset {failed_path!r}") from exc
+            failed_path = (
+                path if "path" in locals() else self.paths[0] if self.paths else ""
+            )
+            raise LexiconResourceError(
+                f"Could not open G2Lex asset {failed_path!r}"
+            ) from exc
         self._assets = tuple(assets)
         self._provenance = tuple(provenance)
         return self._assets
 
-    def lookup(self, word: str, *, tag: str | None = None) -> LexiconPronunciation | None:
+    def lookup(
+        self, word: str, *, tag: str | None = None
+    ) -> LexiconPronunciation | None:
         assets = self._ensure_assets()
         try:
             for asset, path, provenance in zip(assets, self.paths, self._provenance):
@@ -175,7 +187,7 @@ class G2LexLookup:
         self._assets = None
         self._closed = True
 
-    def __enter__(self) -> "G2LexLookup":
+    def __enter__(self) -> G2LexLookup:
         return self
 
     def __exit__(self, *_: object) -> None:

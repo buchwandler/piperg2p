@@ -100,7 +100,9 @@ class LexphonLookup:
                 "Install or verify the requested data, or pass a different DataStore."
             ) from exc
 
-    def _validate_catalog_metadata(self, identifier: str, metadata: dict[str, Any]) -> None:
+    def _validate_catalog_metadata(
+        self, identifier: str, metadata: dict[str, Any]
+    ) -> None:
         kind = metadata.get("kind")
         if kind is not None and str(kind).casefold() != "pronunciation":
             raise LexiconResourceError(
@@ -113,7 +115,9 @@ class LexphonLookup:
                 f"Lexphon asset {identifier!r} declares language {language!r}, "
                 f"not requested {self.language!r}"
             )
-        encoding = metadata.get("phoneme_encoding") or metadata.get("pronunciation_alphabet")
+        encoding = metadata.get("phoneme_encoding") or metadata.get(
+            "pronunciation_alphabet"
+        )
         try:
             normalize_phoneme_encoding(encoding)
         except ValueError as exc:
@@ -141,7 +145,9 @@ class LexphonLookup:
             provenance=provenance,
         )
 
-    def lookup(self, word: str, *, tag: str | None = None) -> LexiconPronunciation | None:
+    def lookup(
+        self, word: str, *, tag: str | None = None
+    ) -> LexiconPronunciation | None:
         runtime = self._ensure_runtime()
         try:
             return self._convert(runtime.lookup(word, tag=tag))
@@ -160,7 +166,7 @@ class LexphonLookup:
             self._runtime.close()
         self._closed = True
 
-    def __enter__(self) -> "LexphonLookup":
+    def __enter__(self) -> LexphonLookup:
         return self
 
     def __exit__(self, *_: object) -> None:

@@ -24,6 +24,7 @@ def _is_arabic_voice(voice: str) -> bool:
     normalized = voice.casefold().replace("_", "-")
     return normalized == "ar" or normalized.startswith(("ar-", "ar+"))
 
+
 class PiperFrontend:
     """Voice-config-driven Piper frontend independent from Piper's runtime."""
 
@@ -40,18 +41,26 @@ class PiperFrontend:
         self.config = config
         self.missing = MissingPhonemePolicy(missing)
         self._spec = spec_for(config)
-        if config.phoneme_type is PhonemeType.ESPEAK and _is_arabic_voice(config.espeak_voice):
+        if config.phoneme_type is PhonemeType.ESPEAK and _is_arabic_voice(
+            config.espeak_voice
+        ):
             raise UnsupportedCompatibilityError(
                 "Arabic Piper eSpeak preprocessing is not implemented; "
                 "ordinary eSpeak compatibility is unavailable for Arabic voices"
             )
         self._lexicon_identifiers = tuple(lexicons)
         if self._lexicon_identifiers and lexicon_backend is not None:
-            raise LexiconConfigurationError("lexicons and lexicon_backend are mutually exclusive")
+            raise LexiconConfigurationError(
+                "lexicons and lexicon_backend are mutually exclusive"
+            )
         if lexicon_store is not None and not self._lexicon_identifiers:
             raise LexiconConfigurationError("lexicon_store requires managed lexicons")
-        if (self._lexicon_identifiers or lexicon_backend is not None) and config.phoneme_type is not PhonemeType.ESPEAK:
-            raise LexiconConfigurationError("lexicon overlay only supports phoneme_type='espeak'")
+        if (
+            self._lexicon_identifiers or lexicon_backend is not None
+        ) and config.phoneme_type is not PhonemeType.ESPEAK:
+            raise LexiconConfigurationError(
+                "lexicon overlay only supports phoneme_type='espeak'"
+            )
         self._lexicon_store = lexicon_store
         self._lexicon_backend = lexicon_backend
         self._owns_lexicon_backend = False
@@ -71,7 +80,11 @@ class PiperFrontend:
             assert self._spec.backend_factory is not None
             return self._spec.backend_factory(self.config)
         if not self._spec.implemented or self._spec.backend_factory is None:
-            extra = f" Install piperg2p[{self._spec.optional_extra}]." if self._spec.optional_extra else ""
+            extra = (
+                f" Install piperg2p[{self._spec.optional_extra}]."
+                if self._spec.optional_extra
+                else ""
+            )
             raise UnsupportedPhonemeTypeError(
                 f"phoneme_type {self.config.phoneme_type.value!r} is recognized but not implemented.{extra}"
             )
@@ -95,7 +108,9 @@ class PiperFrontend:
         return cls(VoiceConfig.from_json(path), **kwargs)
 
     def encode(self, phonemes: Iterable[str]) -> EncodeResult:
-        return self._spec.encoder.encode(tuple(phonemes), self.config.phoneme_id_map, self.missing)
+        return self._spec.encoder.encode(
+            tuple(phonemes), self.config.phoneme_id_map, self.missing
+        )
 
     def _lexicon_diagnostics(self) -> LexiconDiagnostics | None:
         if not self._lexicon_enabled:
@@ -115,7 +130,9 @@ class PiperFrontend:
         backend_diagnostics = getattr(self.backend, "diagnostics", None)
         return FrontendDiagnostics(
             phoneme_type=self.config.phoneme_type.value,
-            backend=backend_diagnostics.implementation if backend_diagnostics else type(self.backend).__name__,
+            backend=backend_diagnostics.implementation
+            if backend_diagnostics
+            else type(self.backend).__name__,
             backend_diagnostics=backend_diagnostics,
             lexicon=self._lexicon_diagnostics(),
         )
@@ -128,13 +145,17 @@ class PiperFrontend:
                 groups = compose_lexicon_overlay(
                     segments,
                     lookup,
-                    lambda value: self.backend.phonemize(value, voice=self.config.espeak_voice),
+                    lambda value: self.backend.phonemize(
+                        value, voice=self.config.espeak_voice
+                    ),
                     vowel_clusters=self.config.vowel_clusters,
                 )
             else:
                 groups = compose_raw_segments(
                     segments,
-                    lambda value: self.backend.phonemize(value, voice=self.config.espeak_voice),
+                    lambda value: self.backend.phonemize(
+                        value, voice=self.config.espeak_voice
+                    ),
                 )
         else:
             groups = self.backend.phonemize(text, voice=self.config.espeak_voice)

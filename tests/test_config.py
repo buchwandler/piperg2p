@@ -36,9 +36,17 @@ def test_config_is_typed_immutable_and_round_trips():
 
 def test_strict_config_requires_core_fields():
     with pytest.raises(ConfigError, match="sample_rate"):
-        VoiceConfig.from_dict({"num_symbols": 1, "num_speakers": 1, "phoneme_id_map": {"_": 0}})
+        VoiceConfig.from_dict(
+            {"num_symbols": 1, "num_speakers": 1, "phoneme_id_map": {"_": 0}}
+        )
     with pytest.raises(ConfigError, match="num_symbols"):
-        VoiceConfig.from_dict({"num_speakers": 1, "audio": {"sample_rate": 22050}, "phoneme_id_map": {"_": 0}})
+        VoiceConfig.from_dict(
+            {
+                "num_speakers": 1,
+                "audio": {"sample_rate": 22050},
+                "phoneme_id_map": {"_": 0},
+            }
+        )
 
 
 def test_lenient_config_infers_legacy_defaults():
@@ -55,15 +63,24 @@ def test_config_rejects_unknown_phoneme_type_and_bad_ids():
     with pytest.raises(ConfigError, match="outside"):
         VoiceConfig.from_dict(raw_config(num_symbols=3))
 
+
 def test_arabic_espeak_profile_is_explicitly_unsupported():
     config = VoiceConfig.from_dict(
         raw_config(phoneme_type="espeak", espeak={"voice": "ar"})
     )
-    with pytest.raises(UnsupportedCompatibilityError, match="Arabic Piper eSpeak preprocessing"):
+    with pytest.raises(
+        UnsupportedCompatibilityError, match="Arabic Piper eSpeak preprocessing"
+    ):
         PiperFrontend(config)
 
+
 def test_deferred_frontends_are_not_advertised_as_implemented():
-    for phoneme_type in (PhonemeType.PINYIN, PhonemeType.HEBREW, PhonemeType.JAPANESE, PhonemeType.THAI):
+    for phoneme_type in (
+        PhonemeType.PINYIN,
+        PhonemeType.HEBREW,
+        PhonemeType.JAPANESE,
+        PhonemeType.THAI,
+    ):
         spec = REGISTRY[phoneme_type]
         assert not spec.implemented
         assert spec.backend_factory is None

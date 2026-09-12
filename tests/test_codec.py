@@ -2,14 +2,24 @@ from piperg2p import PiperFrontend, VoiceConfig, encode_phonemes
 
 
 def _config(phoneme_type="text"):
-    return VoiceConfig.from_dict({
-        "num_symbols": 7,
-        "num_speakers": 1,
-        "audio": {"sample_rate": 22050},
-        "espeak": {"voice": "en-us"},
-        "phoneme_type": phoneme_type,
-        "phoneme_id_map": {"_": [0], "^": [1], "$": [2], "a": [3], "b": [4], " ": [5], ".": [6]},
-    })
+    return VoiceConfig.from_dict(
+        {
+            "num_symbols": 7,
+            "num_speakers": 1,
+            "audio": {"sample_rate": 22050},
+            "espeak": {"voice": "en-us"},
+            "phoneme_type": phoneme_type,
+            "phoneme_id_map": {
+                "_": [0],
+                "^": [1],
+                "$": [2],
+                "a": [3],
+                "b": [4],
+                " ": [5],
+                ".": [6],
+            },
+        }
+    )
 
 
 def test_piper_id_framing():

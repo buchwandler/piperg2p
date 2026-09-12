@@ -20,17 +20,28 @@ class FakeBackend:
 
 
 def config():
-    return VoiceConfig.from_dict({
-        "num_symbols": 20,
-        "num_speakers": 1,
-        "audio": {"sample_rate": 22050},
-        "phoneme_type": "espeak",
-        "phoneme_id_map": {"_": 0, "^": 1, "$": 2, **{chr(97 + i): 3 + i for i in range(17)}},
-    })
+    return VoiceConfig.from_dict(
+        {
+            "num_symbols": 20,
+            "num_speakers": 1,
+            "audio": {"sample_rate": 22050},
+            "phoneme_type": "espeak",
+            "phoneme_id_map": {
+                "_": 0,
+                "^": 1,
+                "$": 2,
+                **{chr(97 + i): 3 + i for i in range(17)},
+            },
+        }
+    )
 
 
 def test_raw_parser_preserves_order_and_unmatched_delimiters():
-    assert parse_raw_blocks("a[[ ɹ ]]b") == [TextSegment("a"), RawPhonemeSegment("ɹ"), TextSegment("b")]
+    assert parse_raw_blocks("a[[ ɹ ]]b") == [
+        TextSegment("a"),
+        RawPhonemeSegment("ɹ"),
+        TextSegment("b"),
+    ]
     assert parse_raw_blocks("a [[ unmatched") == [TextSegment("a [[ unmatched")]
     assert parse_raw_blocks("a ]] b") == [TextSegment("a ]] b")]
 

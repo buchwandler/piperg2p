@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -58,7 +57,11 @@ class LexiconPronunciation:
 
     def __post_init__(self) -> None:
         if self.source_encoding is not None:
-            object.__setattr__(self, "source_encoding", normalize_phoneme_encoding(self.source_encoding))
+            object.__setattr__(
+                self,
+                "source_encoding",
+                normalize_phoneme_encoding(self.source_encoding),
+            )
         if self.provenance is not None and self.source_encoding is None:
             object.__setattr__(self, "source_encoding", self.provenance.source_encoding)
 
@@ -76,7 +79,9 @@ class LexiconDiagnostics:
 
 
 class PronunciationLookup(Protocol):
-    def lookup(self, word: str, *, tag: str | None = None) -> LexiconPronunciation | None: ...
+    def lookup(
+        self, word: str, *, tag: str | None = None
+    ) -> LexiconPronunciation | None: ...
 
     def lookup_many(
         self, words: Sequence[str], *, tag: str | None = None

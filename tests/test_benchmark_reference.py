@@ -12,7 +12,9 @@ def test_reference_case_comparison_reports_mismatches():
     assert comparison[0]["status"] == "mismatch"
 
 
-def test_reference_runner_does_not_create_missing_expected_output(tmp_path, monkeypatch):
+def test_reference_runner_does_not_create_missing_expected_output(
+    tmp_path, monkeypatch
+):
     corpus = tmp_path / "corpus.json"
     corpus.write_text(
         json.dumps(

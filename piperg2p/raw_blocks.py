@@ -53,7 +53,9 @@ def parse_raw_blocks(text: str) -> list[Segment]:
             position = closing + 2
             continue
         if opening > text_start:
-            segments.append(_text_segment(text[text_start:opening], text_start, opening))
+            segments.append(
+                _text_segment(text[text_start:opening], text_start, opening)
+            )
         end = text.find("]]", opening + 2)
         if end < 0:
             remainder = text[opening:]
@@ -66,7 +68,11 @@ def parse_raw_blocks(text: str) -> list[Segment]:
                 )
             else:
                 segments.append(_text_segment(remainder, opening, len(text)))
-            return [segment for segment in segments if not isinstance(segment, TextSegment) or segment.text]
+            return [
+                segment
+                for segment in segments
+                if not isinstance(segment, TextSegment) or segment.text
+            ]
         raw = text[opening + 2 : end].strip()
         segments.append(_raw_segment(raw, opening, end + 2))
         position = end + 2
@@ -75,18 +81,34 @@ def parse_raw_blocks(text: str) -> list[Segment]:
         segments.append(_text_segment(text[text_start:], text_start, len(text)))
     elif not segments and text:
         segments.append(_text_segment(text, 0, len(text)))
-    return [segment for segment in segments if not isinstance(segment, TextSegment) or segment.text]
+    return [
+        segment
+        for segment in segments
+        if not isinstance(segment, TextSegment) or segment.text
+    ]
 
 
 def prepare_segments(segments: Iterable[Segment]) -> tuple[PreparedSegment, ...]:
     """Convert source and raw segments into the shared compositor representation."""
     prepared: list[PreparedSegment] = []
     for segment in segments:
-        end = segment.source_end if segment.source_end is not None else segment.source_start + len(segment.text)
+        end = (
+            segment.source_end
+            if segment.source_end is not None
+            else segment.source_start + len(segment.text)
+        )
         if isinstance(segment, RawPhonemeSegment):
-            prepared.append(PreparedSegment("phonemes", segment.text, segment.source_start, end, "raw-block"))
+            prepared.append(
+                PreparedSegment(
+                    "phonemes", segment.text, segment.source_start, end, "raw-block"
+                )
+            )
         else:
-            prepared.append(PreparedSegment("text", segment.text, segment.source_start, end, "source"))
+            prepared.append(
+                PreparedSegment(
+                    "text", segment.text, segment.source_start, end, "source"
+                )
+            )
     return tuple(prepared)
 
 
@@ -101,7 +123,8 @@ def needs_right_boundary_space(left: str, right: str) -> bool:
 
 
 def compose_prepared_segments(
-    segments: Iterable[PreparedSegment], phonemize_text: Callable[[str], list[list[str]]]
+    segments: Iterable[PreparedSegment],
+    phonemize_text: Callable[[str], list[list[str]]],
 ) -> list[list[str]]:
     """Compose text and direct phoneme segments in source order."""
     output: list[list[str]] = []

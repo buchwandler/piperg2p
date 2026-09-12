@@ -33,9 +33,20 @@ def test_missing_policies_report_and_warn():
         warnings.simplefilter("always")
         result = encode_phonemes(["missing", "missing"], MAP)
     assert result.missing_phonemes == ("missing", "missing")
-    assert len([item for item in caught if issubclass(item.category, MissingPhonemeWarning)]) == 2
+    assert (
+        len(
+            [
+                item
+                for item in caught
+                if issubclass(item.category, MissingPhonemeWarning)
+            ]
+        )
+        == 2
+    )
     assert result.warnings
-    assert encode_phonemes(["missing"], MAP, missing=MissingPhonemePolicy.IGNORE).missing_phonemes == ("missing",)
+    assert encode_phonemes(
+        ["missing"], MAP, missing=MissingPhonemePolicy.IGNORE
+    ).missing_phonemes == ("missing",)
     with pytest.raises(MissingPhonemeError):
         encode_phonemes(["missing"], MAP, missing=MissingPhonemePolicy.ERROR)
 

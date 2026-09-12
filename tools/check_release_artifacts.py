@@ -14,7 +14,10 @@ def _wheel_version(path: Path) -> str:
             name for name in archive.namelist() if name.endswith(".dist-info/METADATA")
         )
         rows = archive.read(metadata).decode("utf-8").splitlines()
-    return next(row.removeprefix("Version: ") for row in rows if row.startswith("Version: "))
+    return next(
+        row.removeprefix("Version: ") for row in rows if row.startswith("Version: ")
+    )
+
 
 def _sdist_version(path: Path) -> str:
     with tarfile.open(path, "r:gz") as archive:
@@ -29,9 +32,7 @@ def _sdist_version(path: Path) -> str:
         rows = handle.read().decode("utf-8").splitlines()
 
     return next(
-        row.removeprefix("Version: ")
-        for row in rows
-        if row.startswith("Version: ")
+        row.removeprefix("Version: ") for row in rows if row.startswith("Version: ")
     )
 
 
@@ -77,10 +78,7 @@ def main() -> int:
             f"artifact version {wheel_version!r} does not match "
             f"expected version {args.expected_version!r}"
         )
-    print(
-        f"checked {wheels[0].name} and {sdists[0].name} "
-        f"(version {wheel_version})"
-    )
+    print(f"checked {wheels[0].name} and {sdists[0].name} (version {wheel_version})")
     return 0
 
 

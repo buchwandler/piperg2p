@@ -37,8 +37,12 @@ class PhonemizeResult:
 
     @property
     def phonemes(self) -> tuple[str, ...]:
-        return tuple(phone for sentence in self.sentences for phone in sentence.phonemes)
+        return tuple(
+            phone for sentence in self.sentences for phone in sentence.phonemes
+        )
 
     @property
     def ids(self) -> tuple[int, ...]:
-        return tuple(identifier for sentence in self.sentences for identifier in sentence.ids)
+        return tuple(
+            identifier for sentence in self.sentences for identifier in sentence.ids
+        )

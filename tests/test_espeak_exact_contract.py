@@ -25,7 +25,10 @@ def test_discovery_prefers_packaged_loader(monkeypatch, tmp_path):
         get_data_path=lambda: str(data),
     )
     monkeypatch.setitem(sys.modules, "espeakng_loader", loader)
-    monkeypatch.setattr("piperg2p.backends.espeak.discovery.find_executable", lambda explicit=None: "espeak-ng")
+    monkeypatch.setattr(
+        "piperg2p.backends.espeak.discovery.find_executable",
+        lambda explicit=None: "espeak-ng",
+    )
 
     paths = discover()
 
@@ -66,9 +69,13 @@ def test_auto_rejects_native_provider_without_exact_clause_api(monkeypatch):
 
     monkeypatch.setattr(backend_module, "NativeEspeakProvider", Native)
     monkeypatch.setattr(backend_module, "EspeakCliBackend", Cli)
-    monkeypatch.setattr(backend_module, "discover", lambda **kwargs: types.SimpleNamespace(
-        library="old", data=None, executable="espeak-ng", source="system-espeak"
-    ))
+    monkeypatch.setattr(
+        backend_module,
+        "discover",
+        lambda **kwargs: types.SimpleNamespace(
+            library="old", data=None, executable="espeak-ng", source="system-espeak"
+        ),
+    )
 
     with pytest.warns(BackendFallbackWarning, match="terminator API unavailable"):
         backend = EspeakBackend(mode="auto")

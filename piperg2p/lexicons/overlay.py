@@ -15,7 +15,9 @@ from .base import PronunciationLookup
 from .spans import scan_source_spans
 
 
-def _coalesce_text_segments(segments: Iterable[PreparedSegment]) -> tuple[PreparedSegment, ...]:
+def _coalesce_text_segments(
+    segments: Iterable[PreparedSegment],
+) -> tuple[PreparedSegment, ...]:
     result: list[PreparedSegment] = []
     for segment in segments:
         if (
@@ -44,7 +46,10 @@ def _prepare_lexicon_pronunciation(pronunciation) -> str:
         return pronunciation.pronunciation
     if encoding == "ipa":
         return unicodedata.normalize("NFD", pronunciation.pronunciation)
-    raise LexiconResourceError(f"unsupported lexicon pronunciation encoding {encoding!r}")
+    raise LexiconResourceError(
+        f"unsupported lexicon pronunciation encoding {encoding!r}"
+    )
+
 
 def overlay_text_segment(
     segment: PreparedSegment,

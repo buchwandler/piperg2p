@@ -28,14 +28,20 @@ class EncoderStrategy(Protocol):
     ) -> EncodeResult: ...
 
 
-def _control_ids(id_map: Mapping[str, Sequence[int]]) -> tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...]]:
+def _control_ids(
+    id_map: Mapping[str, Sequence[int]],
+) -> tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...]]:
     try:
         return tuple(id_map[BOS]), tuple(id_map[PAD]), tuple(id_map[EOS])
     except KeyError as exc:
-        raise ConfigError(f"phoneme_id_map is missing required control symbol {exc.args[0]!r}") from exc
+        raise ConfigError(
+            f"phoneme_id_map is missing required control symbol {exc.args[0]!r}"
+        ) from exc
 
 
-def _missing(phoneme: str, policy: MissingPhonemePolicy, items: list[str], messages: list[str]) -> None:
+def _missing(
+    phoneme: str, policy: MissingPhonemePolicy, items: list[str], messages: list[str]
+) -> None:
     items.append(phoneme)
     message = f"phoneme {phoneme!r} is not present in voice phoneme_id_map"
     if policy is MissingPhonemePolicy.ERROR:
@@ -69,14 +75,24 @@ def encode_phonemes(
 
 
 class OrdinaryEncoder:
-    def encode(self, phonemes: Sequence[str], id_map: Mapping[str, Sequence[int]], missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN) -> EncodeResult:
+    def encode(
+        self,
+        phonemes: Sequence[str],
+        id_map: Mapping[str, Sequence[int]],
+        missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN,
+    ) -> EncodeResult:
         return encode_phonemes(phonemes, id_map, missing=missing)
 
 
 class PinyinEncoder:
     """Group-aware encoder for flat Pinyin symbols."""
 
-    def encode(self, phonemes: Sequence[str], id_map: Mapping[str, Sequence[int]], missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN) -> EncodeResult:
+    def encode(
+        self,
+        phonemes: Sequence[str],
+        id_map: Mapping[str, Sequence[int]],
+        missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN,
+    ) -> EncodeResult:
         policy = MissingPhonemePolicy(missing)
         bos_ids, pad_ids, eos_ids = _control_ids(id_map)
         out: list[int] = [int(value) for value in bos_ids]
@@ -88,7 +104,11 @@ class PinyinEncoder:
                 _missing(phoneme, policy, missing_items, messages)
                 continue
             out.extend(int(value) for value in ids)
-            if phoneme in "12345" or phoneme.isspace() or phoneme in ",.!?;:，。！？；：":
+            if (
+                phoneme in "12345"
+                or phoneme.isspace()
+                or phoneme in ",.!?;:，。！？；："
+            ):
                 out.extend(int(value) for value in pad_ids)
         out.extend(int(value) for value in eos_ids)
         return EncodeResult(tuple(out), tuple(missing_items), tuple(messages))

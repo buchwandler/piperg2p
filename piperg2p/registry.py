@@ -18,21 +18,20 @@ class FrontendSpec:
     implemented: bool = True
 
 
-
 def _text_backend(config: VoiceConfig) -> TextBackend:
     del config
     return TextBackend()
-
 
 
 def _espeak_backend(config: VoiceConfig) -> EspeakBackend:
     return EspeakBackend(vowel_clusters=config.vowel_clusters)
 
 
-
 REGISTRY: dict[PhonemeType, FrontendSpec] = {
     PhonemeType.TEXT: FrontendSpec(PhonemeType.TEXT, _text_backend, OrdinaryEncoder()),
-    PhonemeType.ESPEAK: FrontendSpec(PhonemeType.ESPEAK, _espeak_backend, OrdinaryEncoder()),
+    PhonemeType.ESPEAK: FrontendSpec(
+        PhonemeType.ESPEAK, _espeak_backend, OrdinaryEncoder()
+    ),
     PhonemeType.PINYIN: FrontendSpec(
         PhonemeType.PINYIN, None, PinyinEncoder(), "zh", False
     ),
@@ -48,9 +47,10 @@ REGISTRY: dict[PhonemeType, FrontendSpec] = {
 }
 
 
-
 def spec_for(config: VoiceConfig) -> FrontendSpec:
     try:
         return REGISTRY[config.phoneme_type]
     except KeyError as exc:
-        raise UnsupportedPhonemeTypeError(f"unsupported phoneme_type {config.phoneme_type.value!r}") from exc
+        raise UnsupportedPhonemeTypeError(
+            f"unsupported phoneme_type {config.phoneme_type.value!r}"
+        ) from exc

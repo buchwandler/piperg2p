@@ -72,15 +72,20 @@ def test_lexicon_pronunciation_is_normalized_to_nfd():
     )
     assert groups == [["e", "\u0301"]]
 
+
 def test_ipa3_lexicon_hit_preserves_raw_symbol_stream():
     class IPA3Lookup:
         @property
         def diagnostics(self):
-            return LexiconDiagnostics(True, "fake", "en-us", ("fake",), "piper-espeak-frozen")
+            return LexiconDiagnostics(
+                True, "fake", "en-us", ("fake",), "piper-espeak-frozen"
+            )
 
         def lookup_many(self, words, *, tag=None):
             return tuple(
-                LexiconPronunciation("é", "fake", matched_key=word, source_encoding="espeak-ipa3")
+                LexiconPronunciation(
+                    "é", "fake", matched_key=word, source_encoding="espeak-ipa3"
+                )
                 for word in words
             )
 

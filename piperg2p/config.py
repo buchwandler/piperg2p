@@ -59,17 +59,24 @@ class VoiceConfig:
         object.__setattr__(
             self,
             "phoneme_id_map",
-            MappingProxyType({str(key): tuple(value) for key, value in self.phoneme_id_map.items()}),
+            MappingProxyType(
+                {str(key): tuple(value) for key, value in self.phoneme_id_map.items()}
+            ),
         )
         object.__setattr__(
             self,
             "speaker_id_map",
-            MappingProxyType({str(key): int(value) for key, value in self.speaker_id_map.items()}),
+            MappingProxyType(
+                {str(key): int(value) for key, value in self.speaker_id_map.items()}
+            ),
         )
         object.__setattr__(
             self,
             "vowel_clusters",
-            frozenset(tuple(str(value) for value in cluster) for cluster in self.vowel_clusters),
+            frozenset(
+                tuple(str(value) for value in cluster)
+                for cluster in self.vowel_clusters
+            ),
         )
         object.__setattr__(self, "extra", MappingProxyType(dict(self.extra)))
 
@@ -100,22 +107,32 @@ class VoiceConfig:
         for phoneme, values in id_map_raw.items():
             if isinstance(values, int) and not isinstance(values, bool):
                 values = (values,)
-            elif isinstance(values, Sequence) and not isinstance(values, (str, bytes, bytearray)):
+            elif isinstance(values, Sequence) and not isinstance(
+                values, (str, bytes, bytearray)
+            ):
                 values = tuple(values)
             else:
                 raise ConfigError(f"invalid id list for phoneme {phoneme!r}")
             if not values:
                 raise ConfigError(f"id list for phoneme {phoneme!r} is empty")
-            ids = tuple(_integer(value, f"id list for phoneme {phoneme!r}") for value in values)
+            ids = tuple(
+                _integer(value, f"id list for phoneme {phoneme!r}") for value in values
+            )
             if any(value < 0 for value in ids):
-                raise ConfigError(f"id list for phoneme {phoneme!r} contains a negative ID")
+                raise ConfigError(
+                    f"id list for phoneme {phoneme!r} contains a negative ID"
+                )
             id_map[str(phoneme)] = ids
 
         if "num_symbols" not in raw:
             if strict:
                 raise ConfigError("voice config is missing num_symbols")
             num_symbols = max(max(values) for values in id_map.values()) + 1
-            warnings.warn("inferred num_symbols from phoneme_id_map", CompatibilityWarning, stacklevel=2)
+            warnings.warn(
+                "inferred num_symbols from phoneme_id_map",
+                CompatibilityWarning,
+                stacklevel=2,
+            )
         else:
             num_symbols = _integer(raw["num_symbols"], "num_symbols")
         if num_symbols <= 0:
@@ -148,14 +165,18 @@ class VoiceConfig:
             str(key): _integer(value, f"speaker_id_map[{key!r}]")
             for key, value in speaker_map_raw.items()
         }
-        default_speaker = _integer(raw.get("default_speaker_id", 0), "default_speaker_id")
+        default_speaker = _integer(
+            raw.get("default_speaker_id", 0), "default_speaker_id"
+        )
         if default_speaker < 0 or default_speaker >= num_speakers:
             raise ConfigError("default_speaker_id is outside num_speakers")
         if any(value < 0 or value >= num_speakers for value in speaker_map.values()):
             raise ConfigError("speaker_id_map contains an ID outside num_speakers")
 
         clusters_raw = raw.get("vowel_clusters") or ()
-        if not isinstance(clusters_raw, Sequence) or isinstance(clusters_raw, (str, bytes)):
+        if not isinstance(clusters_raw, Sequence) or isinstance(
+            clusters_raw, (str, bytes)
+        ):
             raise ConfigError("vowel_clusters must be a sequence of sequences")
         clusters: set[tuple[str, ...]] = set()
         for cluster in clusters_raw:
@@ -168,13 +189,24 @@ class VoiceConfig:
             if len(values) < 2:
                 raise ConfigError("vowel clusters must contain at least two elements")
             if "".join(values) not in id_map:
-                raise ConfigError(f"merged vowel cluster {''.join(values)!r} is absent from phoneme_id_map")
+                raise ConfigError(
+                    f"merged vowel cluster {''.join(values)!r} is absent from phoneme_id_map"
+                )
             clusters.add(values)
 
         known = {
-            "num_symbols", "num_speakers", "audio", "inference", "espeak", "phoneme_id_map",
-            "phoneme_type", "speaker_id_map", "default_speaker_id", "hop_length",
-            "vowel_clusters", "piper_version",
+            "num_symbols",
+            "num_speakers",
+            "audio",
+            "inference",
+            "espeak",
+            "phoneme_id_map",
+            "phoneme_type",
+            "speaker_id_map",
+            "default_speaker_id",
+            "hop_length",
+            "vowel_clusters",
+            "piper_version",
         }
         extra = {key: value for key, value in raw.items() if key not in known}
         return cls(
@@ -191,7 +223,11 @@ class VoiceConfig:
             noise_w=float(inference.get("noise_w", 0.8)),
             hop_length=_integer(raw.get("hop_length", 256), "hop_length"),
             vowel_clusters=frozenset(clusters),
-            piper_version=(str(raw["piper_version"]) if raw.get("piper_version") is not None else None),
+            piper_version=(
+                str(raw["piper_version"])
+                if raw.get("piper_version") is not None
+                else None
+            ),
             extra=extra,
         )
 
@@ -225,7 +261,9 @@ class VoiceConfig:
                 "speaker_id_map": dict(self.speaker_id_map),
                 "default_speaker_id": self.default_speaker_id,
                 "hop_length": self.hop_length,
-                "vowel_clusters": [list(cluster) for cluster in sorted(self.vowel_clusters)],
+                "vowel_clusters": [
+                    list(cluster) for cluster in sorted(self.vowel_clusters)
+                ],
             }
         )
         if self.piper_version is not None:
