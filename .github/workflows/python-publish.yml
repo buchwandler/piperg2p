@@ -1,0 +1,46 @@
+# Build and publish a Python package when a GitHub Release is published.
+
+name: Upload Python Package
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out release
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install release tooling and package
+        run: |
+          python -m pip install --upgrade pip build
+          python -m pip install -e ".[dev]"
+      - name: Run release checks
+        run: |
+          ruff check lexphon tests
+          ruff format --check piperg2p tests
+          mypy lexphon
+          pytest
+      - name: Build package
+        run: python -m build
+      - name: Verify release versions
+        run: python scripts/check_dist_versions.py dist/*.whl dist/*.tar.gz --tag "${{ github.event.release.tag_name }}"
+
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@v1.14.1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          attestations: false
