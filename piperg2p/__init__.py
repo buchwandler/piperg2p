@@ -1,5 +1,8 @@
 """Independent Piper G2P/ID frontend."""
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _distribution_version
+
 from .backends import (
     EspeakBackend,
     EspeakCliBackend,
@@ -49,7 +52,10 @@ from .raw_blocks import (
 )
 from .types import PhonemeSentence, PhonemizeResult
 
-__version__ = "0.2.0"
+try:
+    __version__ = _distribution_version("piperg2p")
+except PackageNotFoundError:
+    __version__ = "0+unknown"
 
 __all__ = [
     "BOS",

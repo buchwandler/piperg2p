@@ -14,6 +14,8 @@ jobs:
         python: ['3.10', '3.11', '3.12', '3.13']
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
@@ -26,6 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -41,6 +45,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -53,6 +59,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -65,6 +73,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -80,6 +90,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -90,6 +102,9 @@ jobs:
       - run: python -m twine check dist/*
       - run: python -m venv /tmp/piperg2p-wheel-test
       - run: /tmp/piperg2p-wheel-test/bin/python -m pip install --no-deps dist/*.whl
+      - run: >-
+          /tmp/piperg2p-wheel-test/bin/python -c
+          "from importlib.metadata import version; import piperg2p; assert piperg2p.__version__ == version('piperg2p'); print(piperg2p.__version__)"
       - run: /tmp/piperg2p-wheel-test/bin/python -c "from piperg2p import PiperFrontend, VoiceConfig; print(PiperFrontend(VoiceConfig.from_dict({'phoneme_type': 'text', 'num_symbols': 4, 'num_speakers': 1, 'audio': {'sample_rate': 22050}, 'phoneme_id_map': {'_': 0, '^': 1, '$': 2, 'a': 3}})).phonemize('a').ids)"
 
   publish:
@@ -100,10 +115,17 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: python -m pip install --upgrade pip build twine
       - run: python -m build
+      - name: Verify release version
+        shell: bash
+        run: |
+          expected="${GITHUB_REF_NAME#v}"
+          python tools/check_release_artifacts.py dist --expected-version "$expected"
       - run: python -m twine check dist/*
       - uses: pypa/gh-action-pypi-publish@release/v1
