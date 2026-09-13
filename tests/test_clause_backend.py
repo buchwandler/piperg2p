@@ -61,6 +61,7 @@ def test_cli_backend_uses_utf8_and_reports_best_effort(monkeypatch):
     backend = EspeakCliBackend(executable=executable)
     assert backend.phonemize("hé", voice="en-us") == [["h", "ɛ", "l", "ə"]]
     assert calls[0][1]["encoding"] == "utf-8"
+    assert calls[0][1]["input"] == "hé\n"
     assert backend.diagnostics.parity == "best-effort"
 
 

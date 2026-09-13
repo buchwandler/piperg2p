@@ -19,6 +19,7 @@ def test_reference_uses_independent_ipa3_command(monkeypatch):
     result = reference.run("hello", voice="en-us")
     assert any("--ipa=3" in command for command, _ in calls)
     assert any("--stdin" in command for command, _ in calls)
+    assert calls[-1][1]["input"] == "hello\n"
     assert result.raw == "həˈləʊ"
 
 

@@ -40,7 +40,10 @@ class EspeakCliBackend:
         try:
             process = subprocess.run(
                 [self.executable or "", "-q", "--ipa=3", "-v", voice, "--stdin"],
-                input=text,
+                # eSpeak only flushes the final clause completely when stdin
+                # contains a line terminator. Without one, some versions
+                # return a truncated pronunciation for the final word.
+                input=text if text.endswith("\n") else f"{text}\n",
                 encoding="utf-8",
                 errors="strict",
                 capture_output=True,

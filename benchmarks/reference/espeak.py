@@ -49,7 +49,7 @@ class EspeakReference:
         try:
             process = subprocess.run(
                 command,
-                input=text,
+                input=text if text.endswith("\n") else f"{text}\n",
                 encoding="utf-8",
                 errors="strict",
                 capture_output=True,
