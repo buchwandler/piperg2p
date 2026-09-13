@@ -8,7 +8,9 @@ from piperg2p import get_g2p
 
 def parser(description: str) -> argparse.ArgumentParser:
     value = argparse.ArgumentParser(description=description)
-    value.add_argument("--config", required=True, type=Path, help="Piper .onnx.json voice config")
+    value.add_argument(
+        "--config", required=True, type=Path, help="Piper .onnx.json voice config"
+    )
     value.add_argument("--language", default="en-us")
     return value
 

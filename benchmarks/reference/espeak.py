@@ -16,17 +16,30 @@ class ReferenceInfrastructureError(RuntimeError):
 class EspeakReference:
     """Independent direct subprocess adapter for eSpeak IPA mode 3."""
 
-    def __init__(self, executable: str | Path | None = None, *, timeout: float | None = None):
-        selected = str(executable) if executable else shutil.which("espeak-ng") or shutil.which("espeak")
+    def __init__(
+        self, executable: str | Path | None = None, *, timeout: float | None = None
+    ):
+        selected = (
+            str(executable)
+            if executable
+            else shutil.which("espeak-ng") or shutil.which("espeak")
+        )
         if selected is None:
-            raise ReferenceInfrastructureError("neither espeak-ng nor espeak is installed")
+            raise ReferenceInfrastructureError(
+                "neither espeak-ng nor espeak is installed"
+            )
         self.executable = selected
         self.timeout = timeout
         self.version = self._version()
 
     def _version(self) -> str | None:
         try:
-            process = subprocess.run([self.executable, "--version"], capture_output=True, text=True, check=False)
+            process = subprocess.run(
+                [self.executable, "--version"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
         except OSError:
             return None
         return (process.stdout or process.stderr).strip()
@@ -44,7 +57,9 @@ class EspeakReference:
                 timeout=self.timeout,
             )
         except (OSError, subprocess.SubprocessError) as exc:
-            raise ReferenceInfrastructureError(f"direct eSpeak invocation failed: {exc}") from exc
+            raise ReferenceInfrastructureError(
+                f"direct eSpeak invocation failed: {exc}"
+            ) from exc
         if process.returncode:
             raise ReferenceInfrastructureError(
                 f"direct eSpeak exited {process.returncode}: {process.stderr.strip()}"
@@ -64,8 +79,17 @@ class EspeakReference:
             "executable": self.executable,
             "version": self.version,
             "platform": platform.platform(),
-            "command_shape": ["<executable>", "-q", "--ipa=3", "-v", "<voice>", "--stdin"],
-            "sha256": hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None,
+            "command_shape": [
+                "<executable>",
+                "-q",
+                "--ipa=3",
+                "-v",
+                "<voice>",
+                "--stdin",
+            ],
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest()
+            if path.is_file()
+            else None,
         }
 
 

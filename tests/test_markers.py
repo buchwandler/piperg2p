@@ -10,8 +10,16 @@ def test_parse_delimited_preserves_clean_offsets_and_escapes():
 
 def test_marker_assignments_support_ordinals_and_sequences():
     ranges = [(0, 3), (4, 7)]
-    assert [item.attrs["lang"] for item in apply_marker_overrides("one two", ranges, {2: {"lang": "de"}})] == ["de"]
-    assert [item.attrs["ph"] for item in apply_marker_overrides("one two", ranges, [{"ph": "a"}, {"ph": "b"}])] == ["a", "b"]
+    assert [
+        item.attrs["lang"]
+        for item in apply_marker_overrides("one two", ranges, {2: {"lang": "de"}})
+    ] == ["de"]
+    assert [
+        item.attrs["ph"]
+        for item in apply_marker_overrides(
+            "one two", ranges, [{"ph": "a"}, {"ph": "b"}]
+        )
+    ] == ["a", "b"]
 
 
 def test_unmatched_marker_is_reported():

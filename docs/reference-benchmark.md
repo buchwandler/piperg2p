@@ -26,7 +26,6 @@ python benchmarks/benchmark_reference.py \
 
 The command records Piper commit and version, Python and platform information, dependency versions, voice configuration hash, and overlay asset identity. A missing or mismatched expected file exits nonzero. Expected output is never created or changed during normal execution. Replacing it requires the explicit `--write-expected --expected PATH` command and subsequent human review.
 
-
 ## eSpeak IPA3 primary benchmark
 
 `eSpeak --ipa=3` is the pronunciation gold standard. The direct benchmark has separate core, sentence, composition, and lexicon-overlay suites and reports exact matches plus symbol substitutions, insertions, deletions, edit distance, and error rate.

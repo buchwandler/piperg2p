@@ -31,7 +31,11 @@ def _as_override(value: OverrideSpanLike) -> OverrideSpan:
         if start is None or end is None:
             raise ValueError("override mapping requires start and end")
         if not attrs:
-            attrs = {key: item for key, item in value.items() if key not in {"start", "end", "char_start", "char_end"}}
+            attrs = {
+                key: item
+                for key, item in value.items()
+                if key not in {"start", "end", "char_start", "char_end"}
+            }
         return OverrideSpan(int(start), int(end), attrs)
     if isinstance(value, Sequence) and len(value) == 3:
         return OverrideSpan(int(value[0]), int(value[1]), value[2])
@@ -60,9 +64,11 @@ def _snap_overrides(
     overlap: str,
 ) -> tuple[list[OverrideSpan], list[str]]:
     tokens = _tokenize(text)
-    boundaries = {0, len(text)} | {token.char_start for token in tokens} | {
-        token.char_end for token in tokens
-    }
+    boundaries = (
+        {0, len(text)}
+        | {token.char_start for token in tokens}
+        | {token.char_end for token in tokens}
+    )
     result: list[OverrideSpan] = []
     warnings: list[str] = []
     for raw in values:
@@ -82,7 +88,9 @@ def _snap_overrides(
                     f"override span ({start}, {end}) snapped to ({snapped_start}, {snapped_end})"
                 )
         elif overlap == "strict" and (start not in boundaries or end not in boundaries):
-            warnings.append(f"override span ({start}, {end}) partially overlaps a token; skipped")
+            warnings.append(
+                f"override span ({start}, {end}) partially overlaps a token; skipped"
+            )
             continue
         elif overlap not in {"split", "strict", "snap"}:
             raise ValueError("overlap must be 'snap', 'strict', or 'split'")
@@ -110,7 +118,9 @@ def _tokenize(text: str) -> list[TokenSpan]:
 
 def _symbols(value: str, id_map: Mapping[str, Sequence[int]]) -> list[str]:
     value = unicodedata.normalize("NFD", value)
-    keys = sorted((key for key in id_map if key not in {"^", "_", "$"}), key=len, reverse=True)
+    keys = sorted(
+        (key for key in id_map if key not in {"^", "_", "$"}), key=len, reverse=True
+    )
     output: list[str] = []
     position = 0
     while position < len(value):
@@ -137,7 +147,10 @@ def _update_token_metadata(
 ) -> None:
     for annotation in annotations:
         for token in tokens:
-            if token.char_start >= annotation.start and token.char_end <= annotation.end:
+            if (
+                token.char_start >= annotation.start
+                and token.char_end <= annotation.end
+            ):
                 if annotation.pos is not None:
                     token.meta["pos"] = annotation.pos
                 if annotation.tag is not None:
@@ -148,7 +161,10 @@ def _update_token_metadata(
                     token.lang = annotation.language
     for override in overrides:
         for token in tokens:
-            if token.char_start >= override.char_start and token.char_end <= override.char_end:
+            if (
+                token.char_start >= override.char_start
+                and token.char_end <= override.char_end
+            ):
                 token.meta["override"] = dict(override.attrs)
                 if "lang" in override.attrs:
                     token.lang = str(override.attrs["lang"])
@@ -167,9 +183,16 @@ def apply_overrides(
 ) -> PhonemizeResult:
     normalized_annotations = [_as_annotation(value) for value in annotations]
     for annotation in normalized_annotations:
-        if annotation.start < 0 or annotation.end > len(text) or annotation.end < annotation.start:
+        if (
+            annotation.start < 0
+            or annotation.end > len(text)
+            or annotation.end < annotation.start
+        ):
             raise ValueError("annotation offsets must be within source text")
-        if annotation.text is not None and annotation.text != text[annotation.start : annotation.end]:
+        if (
+            annotation.text is not None
+            and annotation.text != text[annotation.start : annotation.end]
+        ):
             raise ValueError("annotation text does not match its source span")
     normalized, warning_messages = _snap_overrides(text, overrides, overlap)
     routes: list[LanguageRoute] = []
@@ -190,7 +213,11 @@ def apply_overrides(
                 )
             )
             if route.language != g2p.language:
-                normalized.append(OverrideSpan(token.char_start, token.char_end, {"lang": route.language}))
+                normalized.append(
+                    OverrideSpan(
+                        token.char_start, token.char_end, {"lang": route.language}
+                    )
+                )
         normalized.sort(key=lambda item: (item.char_start, item.char_end))
     tokens = _tokenize(text)
     _update_token_metadata(tokens, normalized_annotations, normalized)
@@ -204,7 +231,13 @@ def apply_overrides(
     cursor = 0
     for override in normalized:
         if cursor < override.char_start:
-            groups.extend(_phonemize_text(g2p, text[cursor : override.char_start], g2p.frontend.config.espeak_voice))
+            groups.extend(
+                _phonemize_text(
+                    g2p,
+                    text[cursor : override.char_start],
+                    g2p.frontend.config.espeak_voice,
+                )
+            )
         attrs = override.attrs
         if "ph" in attrs:
             resolved = str(attrs["ph"])
@@ -220,16 +253,25 @@ def apply_overrides(
             groups.append(symbols)
         else:
             language = str(attrs.get("lang", g2p.frontend.config.espeak_voice))
-            segment_groups = _phonemize_text(g2p, text[override.char_start : override.char_end], language)
+            segment_groups = _phonemize_text(
+                g2p, text[override.char_start : override.char_end], language
+            )
             if "stress" in attrs:
                 segment_groups = [
-                    _symbols(apply_stress("".join(group), attrs["stress"], strict=strict_stress), g2p.config.phoneme_id_map)
+                    _symbols(
+                        apply_stress(
+                            "".join(group), attrs["stress"], strict=strict_stress
+                        ),
+                        g2p.config.phoneme_id_map,
+                    )
                     for group in segment_groups
                 ]
             groups.extend(segment_groups)
         cursor = override.char_end
     if cursor < len(text):
-        groups.extend(_phonemize_text(g2p, text[cursor:], g2p.frontend.config.espeak_voice))
+        groups.extend(
+            _phonemize_text(g2p, text[cursor:], g2p.frontend.config.espeak_voice)
+        )
 
     sentences: list[PhonemeSentence] = []
     missing: list[str] = []
@@ -237,7 +279,9 @@ def apply_overrides(
     for group in groups:
         encoded = g2p.frontend.encode(group)
         sentences.append(
-            PhonemeSentence(tuple(group), encoded.ids, encoded.missing_phonemes, encoded.warnings)
+            PhonemeSentence(
+                tuple(group), encoded.ids, encoded.missing_phonemes, encoded.warnings
+            )
         )
         missing.extend(encoded.missing_phonemes)
         warnings.extend(encoded.warnings)

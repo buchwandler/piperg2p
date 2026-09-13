@@ -10,4 +10,7 @@ def test_tokenize_is_source_aligned_and_keeps_internal_word_punctuation():
         ("café\u0301", 18, 23),
         ("!", 23, 24),
     ]
-    assert [token.text for token in tokenize("hello, world", keep_punct=False)] == ["hello", "world"]
+    assert [token.text for token in tokenize("hello, world", keep_punct=False)] == [
+        "hello",
+        "world",
+    ]

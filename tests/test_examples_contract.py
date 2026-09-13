@@ -18,7 +18,9 @@ EXAMPLES = {
 
 def test_all_sibling_examples_exist_and_compile():
     root = Path(__file__).parents[1] / "examples"
-    assert {path.name for path in root.glob("*.py") if path.name != "_common.py"} == EXAMPLES
+    assert {
+        path.name for path in root.glob("*.py") if path.name != "_common.py"
+    } == EXAMPLES
     for name in EXAMPLES:
         compile((root / name).read_text(encoding="utf-8"), str(root / name), "exec")
 
@@ -26,4 +28,6 @@ def test_all_sibling_examples_exist_and_compile():
 def test_examples_use_explicit_config_loader():
     root = Path(__file__).parents[1] / "examples"
     for name in EXAMPLES - {"lexicon_selection.py"}:
-        assert "--config" in (root / name).read_text(encoding="utf-8") or "parser(" in (root / name).read_text(encoding="utf-8")
+        assert "--config" in (root / name).read_text(encoding="utf-8") or "parser(" in (
+            root / name
+        ).read_text(encoding="utf-8")

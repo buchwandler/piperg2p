@@ -22,7 +22,8 @@ def apply_stress(phonemes: str, level: int, *, strict: bool = False) -> str:
     if level == -1:
         return "".join(_SECONDARY if value == _PRIMARY else value for value in values)
     has_vowel = any(
-        unicodedata.category(value).startswith("L") and value.casefold() in "aeiouəɛɪɔʊɑɒʌɜ"
+        unicodedata.category(value).startswith("L")
+        and value.casefold() in "aeiouəɛɪɔʊɑɒʌɜ"
         for value in values
     )
     if not has_vowel:

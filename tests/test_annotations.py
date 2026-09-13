@@ -14,7 +14,9 @@ def test_annotations_are_source_aligned_and_preserved_in_token_metadata():
     g2p = PiperG2P("en-us", config)
     result = g2p.phonemize_prepared(
         "ab c",
-        annotations=[TokenAnnotation(0, 2, text="ab", pos="NOUN", tag="NN", lemma="ab")],
+        annotations=[
+            TokenAnnotation(0, 2, text="ab", pos="NOUN", tag="NN", lemma="ab")
+        ],
     )
     assert result.tokens[0].meta == {"pos": "NOUN", "tag": "NN", "lemma": "ab"}
     g2p.close()

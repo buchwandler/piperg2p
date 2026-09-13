@@ -1,1 +1,19 @@
-{"profile": {"name": "espeak-ipa3-sentences", "reference": "direct eSpeak --ipa=3"}, "cases": [{"id": "comma", "text": "Hello, world.", "suite": "sentences"}, {"id": "multiple", "text": "First sentence. Second sentence?", "suite": "sentences"}, {"id": "unicode-punctuation", "text": "Hello: world; again!", "suite": "sentences"}]}
+{
+  "profile": {
+    "name": "espeak-ipa3-sentences",
+    "reference": "direct eSpeak --ipa=3"
+  },
+  "cases": [
+    { "id": "comma", "text": "Hello, world.", "suite": "sentences" },
+    {
+      "id": "multiple",
+      "text": "First sentence. Second sentence?",
+      "suite": "sentences"
+    },
+    {
+      "id": "unicode-punctuation",
+      "text": "Hello: world; again!",
+      "suite": "sentences"
+    }
+  ]
+}

@@ -87,7 +87,10 @@ def test_auto_falls_back_to_cli_after_native_failure(monkeypatch):
 
     assert calls == {"native": 1, "cli": 1}
     assert backend.diagnostics.implementation == "cli"
-    assert backend.diagnostics.fallback_reason == "BackendUnavailableError: library unavailable"
+    assert (
+        backend.diagnostics.fallback_reason
+        == "BackendUnavailableError: library unavailable"
+    )
     backend.close()
 
 
@@ -107,7 +110,9 @@ def test_native_mode_raises_after_native_failure(monkeypatch):
         native_error=backend_module.BackendUnavailableError("library unavailable"),
     )
 
-    with pytest.raises(backend_module.BackendUnavailableError, match="library unavailable"):
+    with pytest.raises(
+        backend_module.BackendUnavailableError, match="library unavailable"
+    ):
         EspeakBackend(mode="native")
 
     assert calls == {"native": 1, "cli": 0}

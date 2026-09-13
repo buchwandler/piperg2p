@@ -3,7 +3,12 @@ from piperg2p import OverrideSpan, PiperG2P, VoiceConfig
 
 def _g2p():
     symbols = {"_": 0, "^": 1, "$": 2, " ": 3}
-    symbols.update({character: index + 4 for index, character in enumerate("abcdefghijklmnopqrstuvwxyz" )})
+    symbols.update(
+        {
+            character: index + 4
+            for index, character in enumerate("abcdefghijklmnopqrstuvwxyz")
+        }
+    )
     return PiperG2P(
         "en-us",
         VoiceConfig.from_dict(

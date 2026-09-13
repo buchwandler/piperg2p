@@ -8,7 +8,6 @@ Native conversion uses the public eSpeak NG functions `espeak_Initialize`, `espe
 Discovery prefers explicit overrides, the optional modern eSpeak loader, system eSpeak NG, and legacy eSpeak. The selected source is exposed as `BackendDiagnostics.discovery_source`.
 `BackendDiagnostics` reports the requested mode, implementation, executable, library, data path, version, exact clause support, fallback reason, and parity label. eSpeak data discovery never imports Piper.
 
-
 ## IPA3 benchmark identity
 
 For pronunciation correctness, `benchmarks/benchmark_espeak.py` invokes the external executable directly with `-q --ipa=3 -v <voice> --stdin`. The reference never calls PiperG2P's CLI backend. Select `--candidate native`, `--candidate cli`, or `--candidate auto`; native fallback is reported in diagnostics. Use `--reference-source golden` only with an explicitly captured golden file.

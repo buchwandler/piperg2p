@@ -80,7 +80,9 @@ class OverrideSpan:
 
     def __post_init__(self) -> None:
         if self.char_start < 0 or self.char_end < self.char_start:
-            raise ValueError("override span offsets must be a non-negative half-open range")
+            raise ValueError(
+                "override span offsets must be a non-negative half-open range"
+            )
         object.__setattr__(self, "attrs", MappingProxyType(dict(self.attrs)))
 
     @property
@@ -163,9 +165,13 @@ class PhonemizeResult:
         self.language_routes = list(self.language_routes)
         self.sentences = tuple(self.sentences)
         if not self.phonemes and self.sentences:
-            self.phonemes = "".join(sentence.phoneme_string for sentence in self.sentences)
+            self.phonemes = "".join(
+                sentence.phoneme_string for sentence in self.sentences
+            )
         if not self.token_ids and self.sentences:
-            self.token_ids = [identifier for sentence in self.sentences for identifier in sentence.ids]
+            self.token_ids = [
+                identifier for sentence in self.sentences for identifier in sentence.ids
+            ]
         if not self.missing_phonemes and self.sentences:
             self.missing_phonemes = tuple(
                 missing

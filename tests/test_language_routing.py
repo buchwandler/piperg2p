@@ -14,5 +14,7 @@ def test_auto_routing_switches_only_on_unambiguous_evidence():
 
 
 def test_auto_routing_keeps_default_for_unknown_words():
-    config = LanguageRoutingConfig(mode="auto", languages=("de-de", "en-us"), lexicons={})
+    config = LanguageRoutingConfig(
+        mode="auto", languages=("de-de", "en-us"), lexicons={}
+    )
     assert route_language("unknown", "de-de", config).language == "de-de"

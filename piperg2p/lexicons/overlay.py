@@ -22,8 +22,12 @@ def _tag_for_span(annotations: Sequence[object], start: int, end: int) -> str | 
             annotation_end = annotation.get("end", annotation.get("char_end"))
             tag = annotation.get("tag")
         else:
-            annotation_start = getattr(annotation, "start", getattr(annotation, "char_start", None))
-            annotation_end = getattr(annotation, "end", getattr(annotation, "char_end", None))
+            annotation_start = getattr(
+                annotation, "start", getattr(annotation, "char_start", None)
+            )
+            annotation_end = getattr(
+                annotation, "end", getattr(annotation, "char_end", None)
+            )
             tag = getattr(annotation, "tag", None)
         if (
             tag is not None
@@ -89,10 +93,14 @@ def overlay_text_segment(
             lookup.lookup(
                 word,
                 tag=_tag_for_span(
-                    annotations, segment.source_start + span.start, segment.source_start + span.end
+                    annotations,
+                    segment.source_start + span.start,
+                    segment.source_start + span.end,
                 ),
             )
-            for span, word in zip((span for span in spans if span.kind == "word"), words, strict=True)
+            for span, word in zip(
+                (span for span in spans if span.kind == "word"), words, strict=True
+            )
         )
     else:
         hits = lookup.lookup_many(words, tag=tag)
@@ -134,7 +142,7 @@ def prepare_lexicon_segments(
     tag: str | None = None,
     fallback: bool = True,
     annotations: Sequence[object] = (),
- ) -> tuple[PreparedSegment, ...]:
+) -> tuple[PreparedSegment, ...]:
     prepared = prepare_segments(segments)
     output: list[PreparedSegment] = []
     for segment in prepared:
@@ -173,7 +181,7 @@ def compose_lexicon_overlay(
     tag: str | None = None,
     fallback: bool = True,
     annotations: Sequence[object] = (),
- ) -> list[list[str]]:
+) -> list[list[str]]:
     prepared = prepare_lexicon_segments(
         segments,
         lookup,

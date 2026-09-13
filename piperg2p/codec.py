@@ -149,7 +149,9 @@ def ids_to_phonemes(ids: Sequence[int], config: object) -> str:
         key = tuple(symbol_ids)
         previous = candidates.get(key)
         if previous is not None and previous != symbol:
-            raise ConfigError(f"ambiguous ID mapping for {key!r}: {previous!r}, {symbol!r}")
+            raise ConfigError(
+                f"ambiguous ID mapping for {key!r}: {previous!r}, {symbol!r}"
+            )
         candidates[key] = symbol
     keys = sorted(candidates, key=len, reverse=True)
     output: list[str] = []

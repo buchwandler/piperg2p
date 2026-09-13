@@ -5,7 +5,9 @@ from pathlib import Path
 from piperg2p import EspeakBackend, PiperFrontend, VoiceConfig
 
 
-def run_candidate(text: str, voice: str, *, candidate: str, config: Path | None = None) -> tuple[str, dict[str, object]]:
+def run_candidate(
+    text: str, voice: str, *, candidate: str, config: Path | None = None
+) -> tuple[str, dict[str, object]]:
     if config is None:
         backend = EspeakBackend(mode=candidate)
         try:
@@ -21,8 +23,12 @@ def run_candidate(text: str, voice: str, *, candidate: str, config: Path | None 
     try:
         result = frontend.phonemize_prepared(text)
         return result.phonemes, {
-            "implementation": result.diagnostics.backend if result.diagnostics else None,
-            "diagnostics": result.diagnostics.backend_diagnostics.__dict__ if result.diagnostics and result.diagnostics.backend_diagnostics else None,
+            "implementation": result.diagnostics.backend
+            if result.diagnostics
+            else None,
+            "diagnostics": result.diagnostics.backend_diagnostics.__dict__
+            if result.diagnostics and result.diagnostics.backend_diagnostics
+            else None,
         }
     finally:
         frontend.close()

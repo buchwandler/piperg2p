@@ -53,7 +53,11 @@ def apply_marker_overrides(
     if isinstance(assignments, Mapping):
         result: list[OverrideSpan] = []
         for ordinal, attrs in assignments.items():
-            if not isinstance(ordinal, int) or ordinal < 1 or ordinal > len(marked_ranges):
+            if (
+                not isinstance(ordinal, int)
+                or ordinal < 1
+                or ordinal > len(marked_ranges)
+            ):
                 raise ValueError(f"assignment index {ordinal!r} is out of range")
             start, end = marked_ranges[ordinal - 1]
             result.append(OverrideSpan(start, end, attrs))

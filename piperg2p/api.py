@@ -48,7 +48,9 @@ def _validate_compatibility(
     if spacy_model_size is not None:
         raise UnsupportedCompatibilityError("PiperG2P does not use spaCy model sizes")
     if use_goruut_fallback:
-        raise UnsupportedCompatibilityError("Goruut fallback is not supported by PiperG2P")
+        raise UnsupportedCompatibilityError(
+            "Goruut fallback is not supported by PiperG2P"
+        )
 
 
 def _token_is_word(value: str) -> bool:
@@ -73,7 +75,9 @@ def tokenize(text: str, *, keep_punct: bool = True) -> list[TokenSpan]:
                     continue
                 if value in apostrophes | hyphens:
                     next_position = position + 1
-                    if next_position < len(text) and _token_is_word(text[next_position]):
+                    if next_position < len(text) and _token_is_word(
+                        text[next_position]
+                    ):
                         position += 1
                         continue
                 break
@@ -147,14 +151,16 @@ class PiperG2P:
         strict_stress: bool = False,
         language_routing: LanguageRoutingConfig | Mapping[str, Any] | None = None,
     ) -> PhonemizeResult:
-        result = self._frontend.phonemize_prepared(
-            text, annotations=annotations
-        )
+        result = self._frontend.phonemize_prepared(text, annotations=annotations)
         result.clean_text = text
         result.extended_text = text
         result.tokens = tokenize(text)
-        result.phonemes = "".join(sentence.phoneme_string for sentence in result.sentences)
-        result.token_ids = [identifier for sentence in result.sentences for identifier in sentence.ids]
+        result.phonemes = "".join(
+            sentence.phoneme_string for sentence in result.sentences
+        )
+        result.token_ids = [
+            identifier for sentence in result.sentences for identifier in sentence.ids
+        ]
         if overrides or annotations or language_routing is not None:
             from .spans import apply_overrides
 
@@ -206,9 +212,7 @@ def get_g2p(
     use_goruut_fallback: bool = False,
 ) -> PiperG2P:
     normalized_config = _config(config, strict=strict)
-    lexicon_names = tuple(
-        [lexicons] if isinstance(lexicons, str) else lexicons or ()
-    )
+    lexicon_names = tuple([lexicons] if isinstance(lexicons, str) else lexicons or ())
     kwargs = {
         "lexicons": lexicon_names,
         "use_espeak_fallback": use_espeak_fallback,
@@ -233,9 +237,7 @@ def get_g2p(
         strict=strict,
         use_espeak_fallback=use_espeak_fallback,
     )
-    return get_or_create(
-        key, lambda: PiperG2P(language, normalized_config, **kwargs)
-    )
+    return get_or_create(key, lambda: PiperG2P(language, normalized_config, **kwargs))
 
 
 def _require_g2p(

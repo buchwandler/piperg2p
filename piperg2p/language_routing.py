@@ -12,7 +12,9 @@ def normalize_language(language: str) -> str:
     return language.strip().casefold().replace("_", "-")
 
 
-def coerce_routing(value: LanguageRoutingConfig | Mapping[str, Any] | None) -> LanguageRoutingConfig | None:
+def coerce_routing(
+    value: LanguageRoutingConfig | Mapping[str, Any] | None,
+) -> LanguageRoutingConfig | None:
     if value is None or isinstance(value, LanguageRoutingConfig):
         return value
     return LanguageRoutingConfig(
@@ -56,6 +58,8 @@ def route_language(
         )
     ]
     if len(matches) == 1:
-        return LanguageRoute(0, len(word), matches[0], default, "lexicon-evidence", (word,))
+        return LanguageRoute(
+            0, len(word), matches[0], default, "lexicon-evidence", (word,)
+        )
     reason = "default-language" if not matches else "ambiguous-lexicon-evidence"
     return LanguageRoute(0, len(word), default, default, reason, tuple(matches))

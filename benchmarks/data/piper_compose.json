@@ -1,1 +1,10 @@
-{"profile": {"name": "piper-compose", "reference": "reviewed Piper behavior"}, "cases": [{"id": "raw", "text": "hello [[hɛloʊ]]", "suite": "compose"}, {"id": "sentence", "text": "Hello. World?", "suite": "compose"}]}
+{
+  "profile": {
+    "name": "piper-compose",
+    "reference": "reviewed Piper behavior"
+  },
+  "cases": [
+    { "id": "raw", "text": "hello [[hɛloʊ]]", "suite": "compose" },
+    { "id": "sentence", "text": "Hello. World?", "suite": "compose" }
+  ]
+}

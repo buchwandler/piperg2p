@@ -17,7 +17,9 @@ _maxsize = _DEFAULT_MAXSIZE
 
 
 def config_fingerprint(config: VoiceConfig) -> str:
-    payload = json.dumps(config.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    payload = json.dumps(
+        config.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 

@@ -23,7 +23,10 @@ def test_reference_uses_independent_ipa3_command(monkeypatch):
 
 
 def test_comparison_reports_symbol_metrics():
-    values = [compare_case("same", "abc", "abc"), compare_case("different", "abc", "adc")]
+    values = [
+        compare_case("same", "abc", "abc"),
+        compare_case("different", "abc", "adc"),
+    ]
     result = metrics(values)
     assert result["cases_total"] == 2
     assert result["cases_passed"] == 1
