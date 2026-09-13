@@ -55,6 +55,7 @@ include = ["piperg2p*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = "-q"
 markers = [
   "espeak: tests requiring eSpeak",
