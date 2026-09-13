@@ -13,7 +13,6 @@ or Spokenform and does not own written-to-spoken semantic normalization.
 Higher-level applications should perform that preparation before calling
 PiperG2P.
 
-
 ## Optional semantic preparation
 
 Spokenform is a separate package for applications that need written-to-spoken semantic expansion. Install it independently from PiperG2P:

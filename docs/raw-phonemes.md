@@ -2,7 +2,6 @@
 
 In eSpeak mode, `[[ ... ]]` blocks are parsed before normal conversion. Their contents are inserted as phoneme characters and are not normalized or sent through eSpeak. Adjacent normal text is composed into the active sentence so a normal sentence immediately following a raw block joins that active group.
 
-
 ## Semantic preparation and raw blocks
 
 PiperG2P owns raw blocks such as `[[ tɛst ]]`. Spokenform must not reinterpret text inside those blocks. Discover Piper raw blocks before semantic preparation and pass their source ranges to Spokenform as protected spans:
