@@ -18,3 +18,5 @@ PiperFrontend(
 Stable lexicon contracts are available from `piperg2p.lexicons`: `PronunciationLookup`, `LexiconPronunciation`, `LexiconDiagnostics`, `LexphonLookup`, and `G2LexLookup`.
 
 `FrontendDiagnostics.lexicon` is `None` when disabled. When enabled it identifies the implementation, language, identifiers, and override compatibility label.
+
+High-level `phonemize_prepared()` accepts already-prepared text. Semantic preparation is intentionally outside the API. Applications may compose `spokenform.prepare_for_piperg2p()` before this call, but PiperG2P does not import or depend on Spokenform.

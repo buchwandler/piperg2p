@@ -23,17 +23,38 @@ The native clause API is labeled `exact` only when it is available. The CLI path
 pip install .
 ```
 
-PiperG2P consumes prepared, speakable text. It does not own written-to-spoken
-semantic preparation such as number, unit, currency, date, or abbreviation
-expansion. Numeralform and Spokenform are intentionally not PiperG2P
-dependencies. In the intended stack, semantic preparation is composed above
-PiperG2P (for example by PiperSynth through Spokenform).
+PiperG2P consumes **prepared, speakable text**. It does not verbalize numbers, abbreviations, units, currencies, dates, times, URLs, versions, or other written semantics. Prepare those forms in the calling application, then pass the result to `phonemize_prepared()`.
 
-This boundary does not change eSpeak compatibility: PiperG2P passes prepared
-text to the selected backend, and backend-specific pronunciation behavior
-remains unchanged.
+PiperG2P has no runtime dependency on Spokenform or Numeralform. Installing either package does not change core PiperG2P behavior.
+
+This boundary does not change eSpeak compatibility: PiperG2P passes prepared text to the selected backend, and backend-specific pronunciation behavior remains unchanged.
 
 Install eSpeak NG separately for eSpeak voices. Text voices need no optional runtime package.
+
+## Semantic preparation composition
+
+Use a separate preparation package only when written semantics need expansion:
+
+```python
+from spokenform import prepare_for_piperg2p
+from piperg2p import phonemize_prepared
+
+prepared = prepare_for_piperg2p(
+    "Pay $12.50 for 2 kg.",
+    language="en",
+).spoken_text
+
+result = phonemize_prepared(
+    prepared,
+    language="en-us",
+    config="voice.onnx.json",
+)
+
+print(result.phonemes)
+print(result.token_ids)
+```
+
+Install Spokenform separately. It is not required for PiperG2P core installation or core tests.
 
 ## Usage
 
