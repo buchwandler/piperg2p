@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from piperg2p import PiperG2PError
+from piperg2p import BackendUnavailableError, PiperG2PError
 
 if __package__ in {None, ""}:
     from reference.candidate import run_candidate
@@ -125,6 +125,8 @@ def main(argv: list[str] | None = None) -> int:
             )
             return _finish(report, args)
     comparison_values = []
+    candidate_errors: list[str] = []
+    candidate_infrastructure_errors: list[str] = []
     for case in cases:
         try:
             candidate, diagnostics = run_candidate(
@@ -145,6 +147,10 @@ def main(argv: list[str] | None = None) -> int:
             report["comparisons"].append(item)
             comparison_values.append(result)
         except (OSError, PiperG2PError, RuntimeError, ValueError) as exc:
+            message = f"{case['id']}: {exc}"
+            candidate_errors.append(message)
+            if isinstance(exc, BackendUnavailableError):
+                candidate_infrastructure_errors.append(message)
             report["comparisons"].append(
                 {
                     "case_id": case["id"],
@@ -161,10 +167,19 @@ def main(argv: list[str] | None = None) -> int:
                     policy=args.policy,
                 )
             )
-    report["metrics"] = metrics(comparison_values, ids=[])
-    report["status"] = (
-        "pass" if report["metrics"]["cases_failed"] == 0 else "regression"
+    report["metrics"] = metrics(
+        comparison_values,
+        ids=[],
+        candidate_errors=len(candidate_errors),
     )
+    if candidate_errors:
+        report["candidate_errors"] = candidate_errors
+    if candidate_infrastructure_errors:
+        report["status"] = "infrastructure-error"
+    else:
+        report["status"] = (
+            "pass" if report["metrics"]["cases_failed"] == 0 else "regression"
+        )
     if args.write_reference_golden and args.reference_source == "live":
         golden = (
             args.golden

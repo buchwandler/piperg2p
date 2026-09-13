@@ -36,6 +36,9 @@ def metrics(
     comparisons: list[CaseComparison],
     *,
     ids: list[tuple[list[int], list[int]]] | None = None,
+    reference_errors: int = 0,
+    candidate_errors: int = 0,
+    missing_symbol_cases: int = 0,
 ) -> dict[str, Any]:
     passed = sum(item.passed for item in comparisons)
     substitutions = insertions = deletions = 0
@@ -55,8 +58,8 @@ def metrics(
         "cases_passed": passed,
         "cases_failed": len(comparisons) - passed,
         "exact_match_rate": passed / len(comparisons) if comparisons else 1.0,
-        "reference_errors": 0,
-        "candidate_errors": 0,
+        "reference_errors": reference_errors,
+        "candidate_errors": candidate_errors,
         "symbol_substitutions": substitutions,
         "symbol_insertions": insertions,
         "symbol_deletions": deletions,
@@ -66,7 +69,7 @@ def metrics(
         else 0.0,
         "id_exact_matches": sum(left == right for left, right in ids or []),
         "id_mismatches": sum(left != right for left, right in ids or []),
-        "missing_symbol_cases": 0,
+        "missing_symbol_cases": missing_symbol_cases,
     }
 
 

@@ -29,6 +29,8 @@ def render(report: dict[str, Any], format: str) -> str:
                 for item in failures
             )
         return "\n".join(lines)
-    return "\n".join(
-        f"{key}: {value}" for key, value in report.get("metrics", {}).items()
+    lines = [f"{key}: {value}" for key, value in report.get("metrics", {}).items()]
+    lines.extend(
+        f"candidate_error: {message}" for message in report.get("candidate_errors", [])
     )
+    return "\n".join(lines)
