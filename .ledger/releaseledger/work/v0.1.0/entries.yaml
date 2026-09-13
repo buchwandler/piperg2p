@@ -1,0 +1,83 @@
+schema: releaseledger.entry-batch.v1
+operation: create
+schema_version: 1
+object_type: release_entry_batch
+release_version: v0.1.0
+git_base_ref: 90b9333891a52081accf0ac0f6c6498106bb597c
+git_base_sha: 90b9333891a52081accf0ac0f6c6498106bb597c
+git_head_ref: 882bbcbbec693f7580467fc26023146e03c006f7
+git_head_sha: 882bbcbbec693f7580467fc26023146e03c006f7
+include_merges: nontrivial
+entries:
+  - kind: added
+    summary: Added a standalone voice-config-driven Piper frontend with text and eSpeak backends
+    status: accepted
+    source_refs:
+      - git:5f8a77a166edf61e81a575be2634296e103905c9
+  - kind: added
+    summary: Added opt-in G2Lex and Lexphon adapters with pronunciation overlays and raw-block precedence
+    status: accepted
+    source_refs:
+      - git:3064cf6b53d152227937141dff61e10656e4dad3
+  - kind: changed
+    summary: Improved lexicon resolution, configuration validation, and compatibility checks across supported profiles
+    status: accepted
+    source_refs:
+      - git:e08deb16fd48b45356606609b4ebb7ce7c221465
+  - kind: changed
+    summary: Improved package versioning with source control metadata and release-artifact validation
+    status: accepted
+    source_refs:
+      - git:797d2054135318a02c394cc6462c67f43797e160
+  - kind: internal
+    summary: Improved runtime consistency and repository formatting across the initial implementation
+    status: accepted
+    internal: true
+    source_refs:
+      - git:baf294f3ee87a599ff8cafea124e8ab6991c6670
+  - kind: internal
+    summary: Added repository automation for coverage, formatting, testing, and package publication
+    status: accepted
+    internal: true
+    source_refs:
+      - git:eb23e1501ad8ea427a673c8d910e7854c24973a3
+      - git:5d05d1c9532d8e7a0dcceb61cf623635aca7cd14
+      - git:aeba14b9fe785b7a60a9b08211ccdde7b6f344fb
+  - kind: docs
+    summary: Documented batch processing usage
+    status: accepted
+    source_refs:
+      - git:3b30ded8933812a27df72ff9d09af6fc6a30d808
+  - kind: added
+    summary: Added reusable facades, caching, annotations, language routing, markers, and stress controls to the public API
+    status: accepted
+    source_refs:
+      - git:2fc2f736fa8e070dec2e540c0792980eebc212de
+  - kind: internal
+    summary: Improved consistency across API, benchmark, example, and test integrations
+    status: accepted
+    internal: true
+    source_refs:
+      - git:bfe84b160635a1b4583b9cbd8303cdd8a3c81760
+  - kind: changed
+    summary: Changed runtime dependency boundaries and clarified optional semantic preparation
+    status: accepted
+    source_refs:
+      - git:20bd516e14727b7330117613f34d965a3ef90e66
+  - kind: docs
+    summary: Documented prepared-text usage and explicit Spokenform composition
+    status: accepted
+    source_refs:
+      - git:4cbc65457dbf009ee9983ac58b005d5bcc785ba6
+  - kind: internal
+    summary: Improved documentation and optional integration test fixtures
+    status: accepted
+    internal: true
+    source_refs:
+      - git:ecb05c31b763bd3d5835c508a47556a9e19c3833
+      - git:5db1eaf2dbca0bbe160560e47f0e128cb9015491
+  - kind: fixed
+    summary: Fixed eSpeak CLI clause handling and benchmark integration
+    status: accepted
+    source_refs:
+      - git:882bbcbbec693f7580467fc26023146e03c006f7

@@ -1,0 +1,438 @@
+ .github/workflows/python-publish.yml | 106 ++++++++++++++++++++++++++++-------
+ .github/workflows/test.yml           |  42 +++++++-------
+ README.md                            |  10 ++++
+ docs/installation.md                 |   7 +++
+ docs/quickstart.md                   |   2 +
+ pyproject.toml                       |  11 +++-
+ tests/test_dependency_contract.py    |  32 +++++++++++
+ tests/test_semantic_ownership.py     |  62 ++++++++++++++++++++
+ tools/check_release_artifacts.py     |  29 ++++++++++
+ 9 files changed, 258 insertions(+), 43 deletions(-)
+
+diff --git a/.github/workflows/python-publish.yml b/.github/workflows/python-publish.yml
+index b9de832..f7d6691 100644
+--- a/.github/workflows/python-publish.yml
++++ b/.github/workflows/python-publish.yml
+@@ -1,5 +1,3 @@
+-# Build and publish a Python package when a GitHub Release is published.
+-
+ name: Upload Python Package
+
+ on:
+@@ -9,38 +7,104 @@ on:
+ permissions:
+   contents: read
+
++concurrency:
++  group: pypi-${{ github.event.release.tag_name }}
++  cancel-in-progress: false
++
+ jobs:
+-  deploy:
++  build:
++    name: Build release distributions
+     runs-on: ubuntu-latest
+-
++    timeout-minutes: 15
+     steps:
+-      - name: Check out release
++      - name: Check out release tag
+         uses: actions/checkout@v7
+         with:
++          ref: ${{ github.event.release.tag_name }}
+           fetch-depth: 0
++          persist-credentials: false
+
+       - name: Set up Python
+         uses: actions/setup-python@v7
+         with:
+           python-version: "3.13"
+
+-      - name: Install release tooling and package
++      - name: Resolve release version
++        id: release
++        env:
++          RELEASE_TAG: ${{ github.event.release.tag_name }}
++        shell: bash
+         run: |
+-          python -m pip install --upgrade pip build
+-          python -m pip install -e ".[dev]"
+-      - name: Run release checks
+-        run: |
+-          ruff check lexphon tests
+-          ruff format --check piperg2p tests
+-          mypy lexphon
+-          python -m pytest
++          set -euo pipefail
++
++          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([a-zA-Z0-9.-]+)?$ ]]; then
++            echo "::error::Unsupported release tag '$RELEASE_TAG'; expected v<version>"
++            exit 1
++          fi
++
++          RELEASE_VERSION="${RELEASE_TAG#v}"
++          echo "version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
++
++      - name: Install build tooling
++        run: python -m pip install --upgrade pip build twine packaging
++
+       - name: Build package
+-        run: python -m build
+-      - name: Verify release versions
+-        run: python scripts/check_dist_versions.py dist/*.whl dist/*.tar.gz --tag "${{ github.event.release.tag_name }}"
++        run: |
++          rm -rf dist
++          python -m build --sdist --wheel
+
+-      - name: Publish package to PyPI
+-        uses: pypa/gh-action-pypi-publish@v1.14.1
++      - name: Validate release artifacts
++        env:
++          RELEASE_VERSION: ${{ steps.release.outputs.version }}
++        run: |
++          python tools/check_release_artifacts.py \
++            dist \
++            --expected-version "$RELEASE_VERSION"
++          python -m twine check dist/*
++
++      - name: Verify release semantic-dependency isolation
++        run: |
++          python -m venv /tmp/piperg2p-release-test
++          /tmp/piperg2p-release-test/bin/python -m pip install --upgrade pip
++          /tmp/piperg2p-release-test/bin/python -m pip install dist/*.whl
++          /tmp/piperg2p-release-test/bin/python - <<'PY'
++          from importlib.metadata import PackageNotFoundError, version
++
++          import piperg2p
++
++          for package in ("numeralform", "spokenform"):
++              try:
++                  installed = version(package)
++              except PackageNotFoundError:
++                  continue
++              raise AssertionError(
++                  f"{package} must not be installed as a PiperG2P dependency: {installed}"
++              )
++
++          print("piperg2p", piperg2p.__version__)
++          PY
++      - name: Upload validated release distributions
++        uses: actions/upload-artifact@v7
+         with:
+-          password: ${{ secrets.PYPI_API_TOKEN }}
+-          attestations: false
++          name: release-dists-${{ github.event.release.tag_name }}
++          path: dist/*
++          if-no-files-found: error
++          retention-days: 7
++
++  publish:
++    name: Publish release to PyPI
++    needs: build
++    runs-on: ubuntu-latest
++    timeout-minutes: 10
++    permissions:
++      contents: read
++      id-token: write
++    steps:
++      - name: Download validated release distributions
++        uses: actions/download-artifact@v8
++        with:
++          name: release-dists-${{ github.event.release.tag_name }}
++          path: dist
++
++      - name: Publish package to PyPI
++        uses: pypa/gh-action-pypi-publish@release/v1
+diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml
+index fe74bde..b295877 100644
+--- a/.github/workflows/test.yml
++++ b/.github/workflows/test.yml
+@@ -110,25 +110,25 @@ jobs:
+           /tmp/piperg2p-wheel-test/bin/python -c
+           "from piperg2p import PiperFrontend, VoiceConfig; print(PiperFrontend(VoiceConfig.from_dict({'phoneme_type': 'text', 'num_symbols': 4, 'num_speakers': 1, 'audio': {'sample_rate': 22050}, 'phoneme_id_map': {'_': 0, '^': 1, '$': 2, 'a': 3}})).phonemize('a').ids)"
+
+-  publish:
+-    if: startsWith(github.ref, 'refs/tags/v')
+-    needs: artifact
+-    runs-on: ubuntu-latest
+-    permissions:
+-      id-token: write
+-    steps:
+-      - uses: actions/checkout@v4
+-        with:
+-          fetch-depth: 0
+-      - uses: actions/setup-python@v5
+-        with:
+-          python-version: '3.12'
+-      - run: python -m pip install --upgrade pip build twine
+-      - run: python -m build
+-      - name: Verify release version
+-        shell: bash
++
++
++      - name: Verify wheel semantic-dependency isolation
+         run: |
+-          expected="${GITHUB_REF_NAME#v}"
+-          python tools/check_release_artifacts.py dist --expected-version "$expected"
+-      - run: python -m twine check dist/*
+-      - uses: pypa/gh-action-pypi-publish@release/v1
++          python -m venv /tmp/piperg2p-wheel-deps
++          /tmp/piperg2p-wheel-deps/bin/python -m pip install --upgrade pip
++          /tmp/piperg2p-wheel-deps/bin/python -m pip install dist/*.whl
++          /tmp/piperg2p-wheel-deps/bin/python - <<'PY'
++          from importlib.metadata import PackageNotFoundError, version
++          import piperg2p
++
++          for package in ("numeralform", "spokenform"):
++              try:
++                  installed = version(package)
++              except PackageNotFoundError:
++                  continue
++              raise AssertionError(
++                  f"{package} must not be installed as a PiperG2P dependency: {installed}"
++              )
++
++          print("piperg2p", piperg2p.__version__)
++          PY
+diff --git a/README.md b/README.md
+index 39052c5..88e6b2b 100644
+--- a/README.md
++++ b/README.md
+@@ -23,6 +23,16 @@ The native clause API is labeled `exact` only when it is available. The CLI path
+ pip install .
+ ```
+
++PiperG2P consumes prepared, speakable text. It does not own written-to-spoken
++semantic preparation such as number, unit, currency, date, or abbreviation
++expansion. Numeralform and Spokenform are intentionally not PiperG2P
++dependencies. In the intended stack, semantic preparation is composed above
++PiperG2P (for example by PiperSynth through Spokenform).
++
++This boundary does not change eSpeak compatibility: PiperG2P passes prepared
++text to the selected backend, and backend-specific pronunciation behavior
++remains unchanged.
++
+ Install eSpeak NG separately for eSpeak voices. Text voices need no optional runtime package.
+
+ ## Usage
+diff --git a/docs/installation.md b/docs/installation.md
+index 7aae115..e7ad636 100644
+--- a/docs/installation.md
++++ b/docs/installation.md
+@@ -6,6 +6,13 @@ The core package supports Python 3.10 and newer and has no mandatory non-standar
+ pip install .
+ ```
+
++## Semantic preparation boundary
++
++PiperG2P consumes prepared, speakable text. It does not depend on Numeralform
++or Spokenform and does not own written-to-spoken semantic normalization.
++Higher-level applications should perform that preparation before calling
++PiperG2P.
++
+ The `dev` extra provides pytest, coverage, ruff, mypy, and build tooling. eSpeak NG is a system dependency for eSpeak voices. Its executable, shared library, and data directory can be selected with constructor arguments or `PIPERG2P_ESPEAK_EXECUTABLE`, `PIPERG2P_ESPEAK_LIBRARY`, and `PIPERG2P_ESPEAK_DATA`.
+
+ No frontend downloads models or makes network requests during phonemization.
+diff --git a/docs/quickstart.md b/docs/quickstart.md
+index abe1507..b400b1e 100644
+--- a/docs/quickstart.md
++++ b/docs/quickstart.md
+@@ -1,5 +1,7 @@
+ # Quick start
+
++The examples below pass prepared, speakable text. Semantic expansion belongs to the calling application, not PiperG2P.
++
+ ```python
+ from piperg2p import PiperFrontend
+
+diff --git a/pyproject.toml b/pyproject.toml
+index 777ccad..88979eb 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -15,6 +15,7 @@ requires-python = ">=3.10"
+ license = {text = "Apache-2.0"}
+ authors = [{name = "piperg2p contributors"}]
+ keywords = ["tts", "piper", "g2p", "phonemizer", "onnx", "espeak"]
++dependencies = []
+ classifiers = [
+   "Development Status :: 3 - Alpha",
+   "License :: OSI Approved :: Apache Software License",
+@@ -27,7 +28,15 @@ classifiers = [
+ ]
+
+ [project.optional-dependencies]
+-dev = ["pytest>=7", "pytest-cov>=4", "ruff>=0.6", "mypy>=1.10", "build>=1", "twine>=5"]
++dev = [
++  "pytest>=7",
++  "pytest-cov>=4",
++  "ruff>=0.6",
++  "mypy>=1.10",
++  "build>=1",
++  "twine>=5",
++  "packaging>=24",
++]
+ g2lex = ["g2lex>=0.1.8,<0.2"]
+ lexphon = ["lexphon>=0.2.3,<0.3"]
+ espeak-direct = [
+diff --git a/tests/test_dependency_contract.py b/tests/test_dependency_contract.py
+new file mode 100644
+index 0000000..12e916b
+--- /dev/null
++++ b/tests/test_dependency_contract.py
+@@ -0,0 +1,32 @@
++from __future__ import annotations
++
++from importlib.metadata import requires
++
++from packaging.requirements import Requirement
++
++FORBIDDEN_SEMANTIC_DEPENDENCIES = frozenset({"numeralform", "spokenform"})
++
++
++def _piperg2p_requirements() -> list[Requirement]:
++    raw = requires("piperg2p")
++    if raw is None:
++        return []
++    return [Requirement(value) for value in raw]
++
++
++def _normalized_name(requirement: Requirement) -> str:
++    return requirement.name.casefold().replace("_", "-")
++
++
++def test_semantic_packages_are_not_piperg2p_dependencies() -> None:
++    names = {_normalized_name(item) for item in _piperg2p_requirements()}
++    assert names.isdisjoint(FORBIDDEN_SEMANTIC_DEPENDENCIES)
++
++
++def test_core_has_no_mandatory_python_runtime_dependencies() -> None:
++    core_requirements = [
++        item
++        for item in _piperg2p_requirements()
++        if item.marker is None or "extra" not in str(item.marker)
++    ]
++    assert core_requirements == []
+diff --git a/tests/test_semantic_ownership.py b/tests/test_semantic_ownership.py
+new file mode 100644
+index 0000000..586fbc7
+--- /dev/null
++++ b/tests/test_semantic_ownership.py
+@@ -0,0 +1,62 @@
++from __future__ import annotations
++
++import subprocess
++import sys
++from pathlib import Path
++
++ROOT = Path(__file__).parents[1] / "piperg2p"
++
++
++def test_piperg2p_has_no_direct_semantic_preparation_imports() -> None:
++    prohibited = (
++        "from numeralform",
++        "import numeralform",
++        "from spokenform",
++        "import spokenform",
++    )
++    offenders: list[str] = []
++    for path in ROOT.rglob("*.py"):
++        text = path.read_text(encoding="utf-8")
++        if any(marker in text for marker in prohibited):
++            offenders.append(str(path.relative_to(ROOT)))
++    assert offenders == []
++
++
++def test_core_import_and_text_frontend_work_without_semantic_packages() -> None:
++    code = """
++import builtins
++
++real_import = builtins.__import__
++
++
++def blocked(name, *args, **kwargs):
++    if name == "numeralform" or name.startswith("numeralform."):
++        raise ModuleNotFoundError("blocked numeralform")
++    if name == "spokenform" or name.startswith("spokenform."):
++        raise ModuleNotFoundError("blocked spokenform")
++    return real_import(name, *args, **kwargs)
++
++
++builtins.__import__ = blocked
++
++from piperg2p import PiperFrontend, VoiceConfig
++
++config = VoiceConfig.from_dict(
++    {
++        "phoneme_type": "text",
++        "num_symbols": 4,
++        "num_speakers": 1,
++        "audio": {"sample_rate": 22050},
++        "phoneme_id_map": {"_": 0, "^": 1, "$": 2, "a": 3},
++    }
++)
++result = PiperFrontend(config).phonemize_prepared("a")
++assert result.sentences
++"""
++    completed = subprocess.run(
++        [sys.executable, "-c", code],
++        check=False,
++        capture_output=True,
++        text=True,
++    )
++    assert completed.returncode == 0, completed.stderr
+diff --git a/tools/check_release_artifacts.py b/tools/check_release_artifacts.py
+index b1d0ac0..5cf2609 100644
+--- a/tools/check_release_artifacts.py
++++ b/tools/check_release_artifacts.py
+@@ -5,8 +5,11 @@ from __future__ import annotations
+ import argparse
+ import tarfile
+ import zipfile
++from email.parser import Parser
+ from pathlib import Path
+
++from packaging.requirements import Requirement
++
+
+ def _wheel_version(path: Path) -> str:
+     with zipfile.ZipFile(path) as archive:
+@@ -19,6 +22,31 @@ def _wheel_version(path: Path) -> str:
+     )
+
+
++def _wheel_requirements(path: Path) -> list[Requirement]:
++    with zipfile.ZipFile(path) as archive:
++        metadata_name = next(
++            name for name in archive.namelist() if name.endswith(".dist-info/METADATA")
++        )
++        metadata_text = archive.read(metadata_name).decode("utf-8")
++
++    metadata = Parser().parsestr(metadata_text)
++    return [Requirement(value) for value in metadata.get_all("Requires-Dist", [])]
++
++
++FORBIDDEN_SEMANTIC_DEPENDENCIES = frozenset({"numeralform", "spokenform"})
++
++
++def _check_dependency_boundary(path: Path) -> None:
++    requirements = _wheel_requirements(path)
++    names = {item.name.casefold().replace("_", "-") for item in requirements}
++    forbidden = sorted(names & FORBIDDEN_SEMANTIC_DEPENDENCIES)
++    if forbidden:
++        raise SystemExit(
++            "wheel metadata contains forbidden semantic-preparation "
++            f"dependencies: {', '.join(forbidden)}"
++        )
++
++
+ def _sdist_version(path: Path) -> str:
+     with tarfile.open(path, "r:gz") as archive:
+         metadata = next(
+@@ -68,6 +96,7 @@ def main() -> int:
+         raise SystemExit("dist must contain exactly one wheel and one sdist")
+     wheel_version = _check_wheel(wheels[0])
+     sdist_version = _check_sdist(sdists[0])
++    _check_dependency_boundary(wheels[0])
+     if wheel_version != sdist_version:
+         raise SystemExit(
+             f"artifact version mismatch: wheel={wheel_version!r}, "

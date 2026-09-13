@@ -1,0 +1,2931 @@
+ .github/workflows/test.yml                |   1 +
+ README.md                                 |  16 ++
+ benchmarks/benchmark_espeak.py            | 117 ++++++++++++
+ benchmarks/data/espeak_core.json          |   1 +
+ benchmarks/data/espeak_sentences.json     |   1 +
+ benchmarks/data/piper_compose.json        |   1 +
+ benchmarks/goldens/.gitkeep               |   0
+ benchmarks/goldens/espeak_ipa3_en-us.json |  13 ++
+ benchmarks/reference/__init__.py          |   3 +
+ benchmarks/reference/candidate.py         |  28 +++
+ benchmarks/reference/compare.py           |  59 ++++++
+ benchmarks/reference/corpus.py            |  16 ++
+ benchmarks/reference/espeak.py            |  75 ++++++++
+ benchmarks/reference/golden.py            |  16 ++
+ benchmarks/reference/report.py            |  19 ++
+ benchmarks/reference/types.py             |  23 +++
+ docs/espeak.md                            |   4 +
+ docs/lexicons.md                          |  13 ++
+ docs/quickstart.md                        |  16 ++
+ docs/reference-benchmark.md               |  12 ++
+ examples/README.md                        |  14 ++
+ examples/_common.py                       |  17 ++
+ examples/cache_and_batch.py               |  13 ++
+ examples/debug_mode_demo.py               |  13 ++
+ examples/demo_both_features.py            |  12 ++
+ examples/espeak_fallback.py               |   9 +
+ examples/explicit_language_spans.py       |  12 ++
+ examples/external_annotations.py          |  12 ++
+ examples/lexicon_selection.py             |   7 +
+ examples/marker_demo.py                   |  13 ++
+ examples/mixed_language_auto.py           |  14 ++
+ examples/new_api_demo.py                  |  13 ++
+ examples/result_inspection.py             |  16 ++
+ examples/structured_stress.py             |  11 ++
+ piperg2p/__init__.py                      |  53 +++++-
+ piperg2p/api.py                           | 304 ++++++++++++++++++++++++++++++
+ piperg2p/backends/espeak/backend.py       |   9 +
+ piperg2p/cache.py                         |  85 +++++++++
+ piperg2p/codec.py                         |  45 +++++
+ piperg2p/frontend.py                      |  12 +-
+ piperg2p/language_routing.py              |  61 ++++++
+ piperg2p/lexicons/__init__.py             |   4 +
+ piperg2p/lexicons/lexphon.py              |   2 +-
+ piperg2p/lexicons/overlay.py              |  71 ++++++-
+ piperg2p/lexicons/registry.py             | 103 ++++++++++
+ piperg2p/markers.py                       |  67 +++++++
+ piperg2p/spans.py                         | 257 +++++++++++++++++++++++++
+ piperg2p/stress.py                        |  31 +++
+ piperg2p/types.py                         | 156 +++++++++++++--
+ tests/test_annotations.py                 |  20 ++
+ tests/test_cache.py                       |  43 +++++
+ tests/test_espeak_backend_selection.py    | 123 ++++++++++++
+ tests/test_espeak_benchmark.py            |  30 +++
+ tests/test_examples.py                    |  10 +
+ tests/test_examples_contract.py           |  29 +++
+ tests/test_ids_to_phonemes.py             |  34 ++++
+ tests/test_language_routing.py            |  18 ++
+ tests/test_markers.py                     |  21 +++
+ tests/test_overrides.py                   |  35 ++++
+ tests/test_public_api_consistency.py      |  12 ++
+ tests/test_stress.py                      |  17 ++
+ tests/test_tokenize.py                    |  13 ++
+ 62 files changed, 2250 insertions(+), 25 deletions(-)
+
+diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml
+index cd929dc..b09a03b 100644
+--- a/.github/workflows/test.yml
++++ b/.github/workflows/test.yml
+@@ -23,6 +23,7 @@ jobs:
+       - run: python -m pip install -e '.[dev]'
+       - run: pytest -q
+       - run: python -m build
++      - run: python benchmarks/benchmark_espeak.py --quick --suite core --candidate cli --reference-source golden --golden benchmarks/goldens/espeak_ipa3_en-us.json --format summary
+
+   espeak-exact:
+     runs-on: ubuntu-latest
+diff --git a/README.md b/README.md
+index d5430ea..39052c5 100644
+--- a/README.md
++++ b/README.md
+@@ -53,3 +53,19 @@ Compatibility is measured against pinned reference profiles, not a moving upstre
+ ## Independence
+
+ The runtime package has no Piper dependency, does not import Piper, and does not bundle Piper GPL assets. Reference corpus metadata is development evidence only.
++
++## Sibling-style API
++
++The high-level API keeps Piper voice configuration explicit while matching the shared development vocabulary used by sibling frontends:
++
++```python
++from piperg2p import phonemize_prepared
++
++result = phonemize_prepared(
++    "Hello world", language="en-us", config="voice.onnx.json"
++)
++print(result.phonemes)
++print(result.token_ids)
++```
++
++Use `get_g2p(language, config=...)` for reuse. `tokenize`, `OverrideSpan`, `TokenAnnotation`, marker helpers, bounded `cache_info`, and `ids_to_phonemes` are also exported. The API never downloads models or lexicons. See `examples/README.md` for the twelve executable examples.
+diff --git a/benchmarks/benchmark_espeak.py b/benchmarks/benchmark_espeak.py
+new file mode 100644
+index 0000000..d7d5bbf
+--- /dev/null
++++ b/benchmarks/benchmark_espeak.py
+@@ -0,0 +1,117 @@
++"""Compare PiperG2P candidates with an independent eSpeak IPA3 reference."""
++
++from __future__ import annotations
++
++import argparse
++from pathlib import Path
++from types import SimpleNamespace
++from typing import Any
++
++from piperg2p import PiperG2PError
++
++if __package__ in {None, ""}:
++    from reference.candidate import run_candidate
++    from reference.compare import compare_case, comparison_dict, metrics
++    from reference.corpus import cases_for_suite, load_corpus
++    from reference.espeak import EspeakReference, ReferenceInfrastructureError
++    from reference.golden import load as load_golden
++    from reference.golden import write as write_golden
++    from reference.report import render
++else:
++    from .reference.candidate import run_candidate
++    from .reference.compare import compare_case, comparison_dict, metrics
++    from .reference.corpus import cases_for_suite, load_corpus
++    from .reference.espeak import EspeakReference, ReferenceInfrastructureError
++    from .reference.golden import load as load_golden
++    from .reference.golden import write as write_golden
++    from .reference.report import render
++
++
++def _parser() -> argparse.ArgumentParser:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--quick", action="store_true")
++    parser.add_argument("--suite", choices=("core", "sentences", "compose", "lexicon"), default="core")
++    parser.add_argument("--reference-source", choices=("live", "golden"), default="live")
++    parser.add_argument("--candidate", choices=("auto", "native", "cli"), default="auto")
++    parser.add_argument("--voice", default="en-us")
++    parser.add_argument("--config", type=Path)
++    parser.add_argument("--corpus", type=Path)
++    parser.add_argument("--golden", type=Path)
++    parser.add_argument("--write-reference-golden", action="store_true")
++    parser.add_argument("--overwrite", action="store_true")
++    parser.add_argument("--policy", choices=("raw-exact", "piper-ipa3", "model-symbol", "model-id"), default="piper-ipa3")
++    parser.add_argument("--format", choices=("summary", "json", "markdown"), default="summary")
++    parser.add_argument("--sample-limit", type=int, default=10)
++    parser.add_argument("--output", type=Path)
++    parser.add_argument("--fail-on", choices=("regression",), default=None)
++    return parser
++
++
++def main(argv: list[str] | None = None) -> int:
++    args = _parser().parse_args(argv)
++    default_corpus = {"core": "espeak_core.json", "sentences": "espeak_sentences.json", "compose": "piper_compose.json", "lexicon": "espeak_core.json"}[args.suite]
++    corpus_path = args.corpus or Path(__file__).parent / "data" / default_corpus
++    corpus = load_corpus(corpus_path)
++    cases = cases_for_suite(corpus, args.suite)
++    report: dict[str, Any] = {"suite": args.suite, "candidate": args.candidate, "voice": args.voice, "policy": args.policy, "reference_source": args.reference_source, "profile": corpus.get("profile"), "comparisons": []}
++    if args.reference_source == "golden":
++        golden_path = args.golden or Path(__file__).parent / "goldens" / f"espeak_ipa3_{args.voice}.json"
++        if not golden_path.is_file():
++            report.update({"status": "infrastructure-error", "reference_errors": [f"golden reference not found: {golden_path}"]})
++            return _finish(report, args)
++        golden = load_golden(golden_path)
++        reference_outputs = {
++            item["id"]: SimpleNamespace(raw=item["raw"])
++            for item in golden.get("cases", [])
++        }
++        missing = [case["id"] for case in cases if case["id"] not in reference_outputs]
++        if missing:
++            report.update({"status": "infrastructure-error", "reference_errors": [f"golden reference is missing cases: {missing}"]})
++            return _finish(report, args)
++        report["reference_metadata"] = golden.get("metadata")
++    else:
++        try:
++            reference = EspeakReference()
++            reference_outputs = {case["id"]: reference.run(case["text"], voice=case.get("voice", args.voice)) for case in cases}
++            report["reference_metadata"] = reference.metadata()
++        except ReferenceInfrastructureError as exc:
++            report.update({"status": "infrastructure-error", "reference_errors": [str(exc)]})
++            return _finish(report, args)
++    comparison_values = []
++    for case in cases:
++        try:
++            candidate, diagnostics = run_candidate(case["text"], case.get("voice", args.voice), candidate=args.candidate, config=args.config)
++            result = compare_case(case["id"], reference_outputs[case["id"]].raw, candidate, policy=args.policy)
++            item = comparison_dict(result)
++            item["input"] = case["text"]
++            item["candidate_diagnostics"] = diagnostics
++            report["comparisons"].append(item)
++            comparison_values.append(result)
++        except (OSError, PiperG2PError, RuntimeError, ValueError) as exc:
++            report["comparisons"].append(
++                {"case_id": case["id"], "passed": False, "error": str(exc), "candidate_error": True}
++            )
++            comparison_values.append(
++                compare_case(case["id"], reference_outputs[case["id"]].raw, "", policy=args.policy)
++            )
++    report["metrics"] = metrics(comparison_values, ids=[])
++    report["status"] = "pass" if report["metrics"]["cases_failed"] == 0 else "regression"
++    if args.write_reference_golden and args.reference_source == "live":
++        golden = args.golden or Path(__file__).parent / "goldens" / f"espeak_ipa3_{args.voice}.json"
++        write_golden(golden, {"metadata": report.get("reference_metadata"), "cases": [{"id": case["id"], "raw": reference_outputs[case["id"]].raw} for case in cases]}, overwrite=args.overwrite)
++    return _finish(report, args)
++
++
++def _finish(report: dict[str, Any], args: argparse.Namespace) -> int:
++    output = render(report, args.format)
++    if args.output:
++        args.output.write_text(output + "\n", encoding="utf-8")
++    else:
++        print(output)
++    if report.get("status") == "infrastructure-error":
++        return 2
++    return 1 if report.get("status") == "regression" else 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/benchmarks/data/espeak_core.json b/benchmarks/data/espeak_core.json
+new file mode 100644
+index 0000000..c532b6e
+--- /dev/null
++++ b/benchmarks/data/espeak_core.json
+@@ -0,0 +1 @@
++{"profile": {"name": "espeak-ipa3-core", "reference": "direct eSpeak --ipa=3"}, "cases": [{"id": "hello", "text": "hello", "suite": "core"}, {"id": "world", "text": "world", "suite": "core"}, {"id": "church", "text": "church", "suite": "core"}, {"id": "cafe", "text": "café", "suite": "core"}, {"id": "phrase", "text": "hello world", "suite": "core"}]}
+\ No newline at end of file
+diff --git a/benchmarks/data/espeak_sentences.json b/benchmarks/data/espeak_sentences.json
+new file mode 100644
+index 0000000..f789a48
+--- /dev/null
++++ b/benchmarks/data/espeak_sentences.json
+@@ -0,0 +1 @@
++{"profile": {"name": "espeak-ipa3-sentences", "reference": "direct eSpeak --ipa=3"}, "cases": [{"id": "comma", "text": "Hello, world.", "suite": "sentences"}, {"id": "multiple", "text": "First sentence. Second sentence?", "suite": "sentences"}, {"id": "unicode-punctuation", "text": "Hello: world; again!", "suite": "sentences"}]}
+\ No newline at end of file
+diff --git a/benchmarks/data/piper_compose.json b/benchmarks/data/piper_compose.json
+new file mode 100644
+index 0000000..821e17d
+--- /dev/null
++++ b/benchmarks/data/piper_compose.json
+@@ -0,0 +1 @@
++{"profile": {"name": "piper-compose", "reference": "reviewed Piper behavior"}, "cases": [{"id": "raw", "text": "hello [[hɛloʊ]]", "suite": "compose"}, {"id": "sentence", "text": "Hello. World?", "suite": "compose"}]}
+\ No newline at end of file
+diff --git a/benchmarks/goldens/.gitkeep b/benchmarks/goldens/.gitkeep
+new file mode 100644
+index 0000000..e69de29
+diff --git a/benchmarks/goldens/espeak_ipa3_en-us.json b/benchmarks/goldens/espeak_ipa3_en-us.json
+new file mode 100644
+index 0000000..0fb6744
+--- /dev/null
++++ b/benchmarks/goldens/espeak_ipa3_en-us.json
+@@ -0,0 +1,13 @@
++{
++  "metadata": {
++    "source": "espeak-ng",
++    "version": "1.52.0.1 local capture"
++  },
++  "cases": [
++    {"id": "hello", "raw": "həlˈo‍ʊ"},
++    {"id": "world", "raw": "wˈɜːld"},
++    {"id": "church", "raw": "t‍ʃˈɜːt‍ʃ"},
++    {"id": "cafe", "raw": "kæfˈe‍ɪ"},
++    {"id": "phrase", "raw": "həlˈo‍ʊ wˈɜːld"}
++  ]
++}
+diff --git a/benchmarks/reference/__init__.py b/benchmarks/reference/__init__.py
+new file mode 100644
+index 0000000..d9cb73c
+--- /dev/null
++++ b/benchmarks/reference/__init__.py
+@@ -0,0 +1,3 @@
++from .espeak import EspeakReference, ReferenceInfrastructureError
++
++__all__ = ["EspeakReference", "ReferenceInfrastructureError"]
+diff --git a/benchmarks/reference/candidate.py b/benchmarks/reference/candidate.py
+new file mode 100644
+index 0000000..db3f95b
+--- /dev/null
++++ b/benchmarks/reference/candidate.py
+@@ -0,0 +1,28 @@
++from __future__ import annotations
++
++from pathlib import Path
++
++from piperg2p import EspeakBackend, PiperFrontend, VoiceConfig
++
++
++def run_candidate(text: str, voice: str, *, candidate: str, config: Path | None = None) -> tuple[str, dict[str, object]]:
++    if config is None:
++        backend = EspeakBackend(mode=candidate)
++        try:
++            groups = backend.phonemize(text, voice=voice)
++            return "".join("".join(group) for group in groups), {
++                "implementation": backend.diagnostics.implementation,
++                "diagnostics": backend.diagnostics.__dict__,
++            }
++        finally:
++            backend.close()
++    voice_config = VoiceConfig.from_json(config)
++    frontend = PiperFrontend(voice_config, backend=EspeakBackend(mode=candidate))
++    try:
++        result = frontend.phonemize_prepared(text)
++        return result.phonemes, {
++            "implementation": result.diagnostics.backend if result.diagnostics else None,
++            "diagnostics": result.diagnostics.backend_diagnostics.__dict__ if result.diagnostics and result.diagnostics.backend_diagnostics else None,
++        }
++    finally:
++        frontend.close()
+diff --git a/benchmarks/reference/compare.py b/benchmarks/reference/compare.py
+new file mode 100644
+index 0000000..eb86e59
+--- /dev/null
++++ b/benchmarks/reference/compare.py
+@@ -0,0 +1,59 @@
++from __future__ import annotations
++
++from dataclasses import asdict
++from typing import Any
++
++from .types import CaseComparison
++
++
++def first_difference(left: str, right: str) -> int | None:
++    for index, (a, b) in enumerate(zip(left, right)):
++        if a != b:
++            return index
++    return min(len(left), len(right)) if left != right else None
++
++
++def compare_case(case_id: str, reference: str, candidate: str, *, policy: str = "piper-ipa3") -> CaseComparison:
++    if policy == "raw-exact":
++        expected, actual = reference, candidate
++    else:
++        import unicodedata
++
++        expected = unicodedata.normalize("NFD", reference)
++        actual = unicodedata.normalize("NFD", candidate)
++        if policy in {"piper-ipa3", "model-symbol", "model-id"}:
++            expected = expected.replace("\u200d", "")
++            actual = actual.replace("\u200d", "")
++    difference = first_difference(expected, actual)
++    return CaseComparison(case_id, difference is None, reference, expected, actual, difference)
++
++
++def metrics(comparisons: list[CaseComparison], *, ids: list[tuple[list[int], list[int]]] | None = None) -> dict[str, Any]:
++    passed = sum(item.passed for item in comparisons)
++    substitutions = insertions = deletions = 0
++    for item in comparisons:
++        width = min(len(item.reference_symbols), len(item.candidate_symbols))
++        substitutions += sum(a != b for a, b in zip(item.reference_symbols[:width], item.candidate_symbols[:width]))
++        insertions += max(0, len(item.candidate_symbols) - len(item.reference_symbols))
++        deletions += max(0, len(item.reference_symbols) - len(item.candidate_symbols))
++    total = sum(len(item.reference_symbols) for item in comparisons)
++    return {
++        "cases_total": len(comparisons),
++        "cases_passed": passed,
++        "cases_failed": len(comparisons) - passed,
++        "exact_match_rate": passed / len(comparisons) if comparisons else 1.0,
++        "reference_errors": 0,
++        "candidate_errors": 0,
++        "symbol_substitutions": substitutions,
++        "symbol_insertions": insertions,
++        "symbol_deletions": deletions,
++        "symbol_edit_distance": substitutions + insertions + deletions,
++        "symbol_error_rate": (substitutions + insertions + deletions) / total if total else 0.0,
++        "id_exact_matches": sum(left == right for left, right in ids or []),
++        "id_mismatches": sum(left != right for left, right in ids or []),
++        "missing_symbol_cases": 0,
++    }
++
++
++def comparison_dict(value: CaseComparison) -> dict[str, Any]:
++    return asdict(value)
+diff --git a/benchmarks/reference/corpus.py b/benchmarks/reference/corpus.py
+new file mode 100644
+index 0000000..e0da779
+--- /dev/null
++++ b/benchmarks/reference/corpus.py
+@@ -0,0 +1,16 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++from typing import Any
++
++
++def load_corpus(path: Path) -> dict[str, Any]:
++    value = json.loads(path.read_text(encoding="utf-8"))
++    if not isinstance(value, dict) or not isinstance(value.get("cases"), list):
++        raise TypeError("benchmark corpus must contain a cases list")
++    return value
++
++
++def cases_for_suite(corpus: dict[str, Any], suite: str) -> list[dict[str, Any]]:
++    return [case for case in corpus["cases"] if case.get("suite", "core") == suite]
+diff --git a/benchmarks/reference/espeak.py b/benchmarks/reference/espeak.py
+new file mode 100644
+index 0000000..845b3ef
+--- /dev/null
++++ b/benchmarks/reference/espeak.py
+@@ -0,0 +1,75 @@
++from __future__ import annotations
++
++import hashlib
++import platform
++import shutil
++import subprocess
++from pathlib import Path
++
++from .types import ReferenceOutput
++
++
++class ReferenceInfrastructureError(RuntimeError):
++    pass
++
++
++class EspeakReference:
++    """Independent direct subprocess adapter for eSpeak IPA mode 3."""
++
++    def __init__(self, executable: str | Path | None = None, *, timeout: float | None = None):
++        selected = str(executable) if executable else shutil.which("espeak-ng") or shutil.which("espeak")
++        if selected is None:
++            raise ReferenceInfrastructureError("neither espeak-ng nor espeak is installed")
++        self.executable = selected
++        self.timeout = timeout
++        self.version = self._version()
++
++    def _version(self) -> str | None:
++        try:
++            process = subprocess.run([self.executable, "--version"], capture_output=True, text=True, check=False)
++        except OSError:
++            return None
++        return (process.stdout or process.stderr).strip()
++
++    def run(self, text: str, *, voice: str) -> ReferenceOutput:
++        command = [self.executable, "-q", "--ipa=3", "-v", voice, "--stdin"]
++        try:
++            process = subprocess.run(
++                command,
++                input=text,
++                encoding="utf-8",
++                errors="strict",
++                capture_output=True,
++                check=False,
++                timeout=self.timeout,
++            )
++        except (OSError, subprocess.SubprocessError) as exc:
++            raise ReferenceInfrastructureError(f"direct eSpeak invocation failed: {exc}") from exc
++        if process.returncode:
++            raise ReferenceInfrastructureError(
++                f"direct eSpeak exited {process.returncode}: {process.stderr.strip()}"
++            )
++        raw = process.stdout.rstrip("\r\n")
++        return ReferenceOutput(
++            text=text,
++            raw=raw,
++            canonical=canonicalize(raw),
++            voice=voice,
++            metadata=self.metadata(),
++        )
++
++    def metadata(self) -> dict[str, object]:
++        path = Path(self.executable)
++        return {
++            "executable": self.executable,
++            "version": self.version,
++            "platform": platform.platform(),
++            "command_shape": ["<executable>", "-q", "--ipa=3", "-v", "<voice>", "--stdin"],
++            "sha256": hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None,
++        }
++
++
++def canonicalize(value: str) -> str:
++    import unicodedata
++
++    return unicodedata.normalize("NFD", value)
+diff --git a/benchmarks/reference/golden.py b/benchmarks/reference/golden.py
+new file mode 100644
+index 0000000..e763236
+--- /dev/null
++++ b/benchmarks/reference/golden.py
+@@ -0,0 +1,16 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++from typing import Any
++
++
++def load(path: Path) -> dict[str, Any]:
++    return json.loads(path.read_text(encoding="utf-8"))
++
++
++def write(path: Path, report: dict[str, Any], *, overwrite: bool = False) -> None:
++    if path.exists() and not overwrite:
++        raise FileExistsError(f"golden reference exists: {path}")
++    path.parent.mkdir(parents=True, exist_ok=True)
++    path.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+diff --git a/benchmarks/reference/report.py b/benchmarks/reference/report.py
+new file mode 100644
+index 0000000..ffb57db
+--- /dev/null
++++ b/benchmarks/reference/report.py
+@@ -0,0 +1,19 @@
++from __future__ import annotations
++
++import json
++from typing import Any
++
++
++def render(report: dict[str, Any], format: str) -> str:
++    if format == "json":
++        return json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True)
++    if format == "markdown":
++        metrics = report.get("metrics", {})
++        lines = ["# eSpeak IPA3 benchmark", "", f"- Candidate: `{report.get('candidate')}`", f"- Voice: `{report.get('voice')}`", "", "## Metrics", ""]
++        lines.extend(f"- **{key}**: {value}" for key, value in metrics.items())
++        failures = [item for item in report.get("comparisons", []) if not item.get("passed")]
++        if failures:
++            lines.extend(["", "## Mismatches", ""])
++            lines.extend(f"- `{item['case_id']}` at index `{item['first_difference']}`" for item in failures)
++        return "\n".join(lines)
++    return "\n".join(f"{key}: {value}" for key, value in report.get("metrics", {}).items())
+diff --git a/benchmarks/reference/types.py b/benchmarks/reference/types.py
+new file mode 100644
+index 0000000..568399e
+--- /dev/null
++++ b/benchmarks/reference/types.py
+@@ -0,0 +1,23 @@
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++
++
++@dataclass(frozen=True)
++class ReferenceOutput:
++    text: str
++    raw: str
++    canonical: str
++    voice: str
++    metadata: dict[str, object] = field(default_factory=dict)
++
++
++@dataclass(frozen=True)
++class CaseComparison:
++    case_id: str
++    passed: bool
++    reference_raw: str
++    reference_symbols: str
++    candidate_symbols: str
++    first_difference: int | None = None
++    error: str | None = None
+diff --git a/docs/espeak.md b/docs/espeak.md
+index d9c1872..3adeab2 100644
+--- a/docs/espeak.md
++++ b/docs/espeak.md
+@@ -8,4 +8,8 @@ Native conversion uses the public eSpeak NG functions `espeak_Initialize`, `espe
+ Discovery prefers explicit overrides, the optional modern eSpeak loader, system eSpeak NG, and legacy eSpeak. The selected source is exposed as `BackendDiagnostics.discovery_source`.
+ `BackendDiagnostics` reports the requested mode, implementation, executable, library, data path, version, exact clause support, fallback reason, and parity label. eSpeak data discovery never imports Piper.
+
++
++## IPA3 benchmark identity
++
++For pronunciation correctness, `benchmarks/benchmark_espeak.py` invokes the external executable directly with `-q --ipa=3 -v <voice> --stdin`. The reference never calls PiperG2P's CLI backend. Select `--candidate native`, `--candidate cli`, or `--candidate auto`; native fallback is reported in diagnostics. Use `--reference-source golden` only with an explicitly captured golden file.
+ Clause transformations are pure Python around a clause provider. They remove language-switch markers, retain comma, colon, and semicolon punctuation with a following space, preserve sentence punctuation, apply NFD after assembly, merge configured vowel clusters longest-first, and emit residual final text.
+diff --git a/docs/lexicons.md b/docs/lexicons.md
+index 5e19bd7..b63c742 100644
+--- a/docs/lexicons.md
++++ b/docs/lexicons.md
+@@ -72,3 +72,16 @@ A lexicon hit containing a symbol absent from the voice map is not silently repl
+ Lexicon lookup/resource failures are errors, not normal misses. Optional packages are imported only when an adapter is selected. Core imports and eSpeak-only frontends do not require Lexphon or G2Lex.
+
+ Mixed lexicon/eSpeak sentences can differ from pure eSpeak because selected source spans are intentionally converted independently. Do not claim bit-identical upstream Piper output for lexicon-first mode.
++
++## Discovery and evidence API
++
++Installed pronunciation assets can be inspected without network access:
++
++```python
++from piperg2p import available_lexicons, lexicon_info
++
++for name in available_lexicons("de"):
++    print(name, lexicon_info("de", name))
++```
++
++`g2p.lexicon_evidence(word, tag=...)` returns provenance for a selected hit. Set `use_espeak_fallback=False` to make a lexicon miss explicit instead of sending it to live eSpeak.
+diff --git a/docs/quickstart.md b/docs/quickstart.md
+index a515698..abe1507 100644
+--- a/docs/quickstart.md
++++ b/docs/quickstart.md
+@@ -13,3 +13,19 @@ with PiperFrontend.from_config("voice.onnx.json") as frontend:
+ For a text voice, `phonemize` decomposes input with Unicode NFD and treats each resulting codepoint as a model phoneme. For an eSpeak voice, it selects the configured eSpeak voice and returns one result per detected sentence.
+
+ Use `frontend.diagnostics` or `result.diagnostics` to inspect backend implementation and parity.
++
++For sibling-style calls, use the explicit high-level facade:
++
++```python
++from piperg2p import phonemize_prepared
++
++result = phonemize_prepared(
++    "Hello world",
++    language="en-us",
++    config="voice.onnx.json",
++)
++print(result.phonemes)
++print(result.token_ids)
++```
++
++`result.tokens` contains source offsets. `result.sentences` remains authoritative for sentence-wise Piper inference.
+diff --git a/docs/reference-benchmark.md b/docs/reference-benchmark.md
+index 00eea05..ed7e3ae 100644
+--- a/docs/reference-benchmark.md
++++ b/docs/reference-benchmark.md
+@@ -26,4 +26,16 @@ python benchmarks/benchmark_reference.py \
+
+ The command records Piper commit and version, Python and platform information, dependency versions, voice configuration hash, and overlay asset identity. A missing or mismatched expected file exits nonzero. Expected output is never created or changed during normal execution. Replacing it requires the explicit `--write-expected --expected PATH` command and subsequent human review.
+
++
++## eSpeak IPA3 primary benchmark
++
++`eSpeak --ipa=3` is the pronunciation gold standard. The direct benchmark has separate core, sentence, composition, and lexicon-overlay suites and reports exact matches plus symbol substitutions, insertions, deletions, edit distance, and error rate.
++
++Quick live check:
++
++```bash
++python benchmarks/benchmark_espeak.py --quick --suite core --candidate auto --format summary
++```
++
++Use `--reference-source live` for the installed executable or `--reference-source golden --golden PATH` for a committed capture. Golden refresh requires `--write-reference-golden --overwrite` and is never implicit. The pinned `benchmark_reference.py` remains secondary evidence for Piper-specific composition and historical compatibility, not the pronunciation oracle.
+ The normal runtime package does not depend on Piper. Reference dependencies and expected outputs are development and CI evidence only.
+diff --git a/examples/README.md b/examples/README.md
+new file mode 100644
+index 0000000..0935d12
+--- /dev/null
++++ b/examples/README.md
+@@ -0,0 +1,14 @@
++# PiperG2P examples
++
++Each example requires an explicit Piper voice configuration:
++
++```bash
++python examples/result_inspection.py --config /path/to/voice.onnx.json
++```
++
++The examples use only PiperG2P and locally provisioned resources. They never download
++voices, models, or lexicons. Lexicon examples require installed Lexphon assets. The
++benchmark examples and live eSpeak checks are documented under `docs/espeak.md`.
++
++Files mirror the sibling KokoroG2P example inventory while using Piper's explicit
++voice configuration and sentence-oriented result objects.
+diff --git a/examples/_common.py b/examples/_common.py
+new file mode 100644
+index 0000000..277477b
+--- /dev/null
++++ b/examples/_common.py
+@@ -0,0 +1,17 @@
++from __future__ import annotations
++
++import argparse
++from pathlib import Path
++
++from piperg2p import get_g2p
++
++
++def parser(description: str) -> argparse.ArgumentParser:
++    value = argparse.ArgumentParser(description=description)
++    value.add_argument("--config", required=True, type=Path, help="Piper .onnx.json voice config")
++    value.add_argument("--language", default="en-us")
++    return value
++
++
++def load_g2p(args: argparse.Namespace):
++    return get_g2p(args.language, config=args.config)
+diff --git a/examples/cache_and_batch.py b/examples/cache_and_batch.py
+new file mode 100644
+index 0000000..74f31bd
+--- /dev/null
++++ b/examples/cache_and_batch.py
+@@ -0,0 +1,13 @@
++from _common import parser
++
++from piperg2p import cache_info, clear_cache, get_g2p
++
++args = parser("Reuse a bounded PiperG2P cache entry").parse_args()
++first = get_g2p(args.language, config=args.config)
++second = get_g2p(args.language, config=args.config)
++try:
++    print(first is second, cache_info())
++    for text in ("Hello world", "Good morning", "See you"):
++        print(first.phonemize(text))
++finally:
++    clear_cache()
+diff --git a/examples/debug_mode_demo.py b/examples/debug_mode_demo.py
+new file mode 100644
+index 0000000..869d73b
+--- /dev/null
++++ b/examples/debug_mode_demo.py
+@@ -0,0 +1,13 @@
++from _common import load_g2p, parser
++
++args = parser("Inspect Piper-native diagnostics").parse_args()
++g2p = load_g2p(args)
++try:
++    result = g2p.phonemize_prepared("Hello world")
++    print(result.diagnostics)
++    print(result.tokens)
++    print(result.missing_phonemes)
++    print(result.warnings)
++    print(result.sentences)
++finally:
++    g2p.close()
+diff --git a/examples/demo_both_features.py b/examples/demo_both_features.py
+new file mode 100644
+index 0000000..702534a
+--- /dev/null
++++ b/examples/demo_both_features.py
+@@ -0,0 +1,12 @@
++from _common import load_g2p, parser
++
++from piperg2p import OverrideSpan
++
++args = parser("Combine prepared text and explicit overrides").parse_args()
++g2p = load_g2p(args)
++try:
++    result = g2p.phonemize_prepared("Hello world", overrides=[OverrideSpan(6, 11, {"lang": "en-us"})])
++    print(result.phonemes)
++    print([(token.text, token.meta) for token in result.tokens])
++finally:
++    g2p.close()
+diff --git a/examples/espeak_fallback.py b/examples/espeak_fallback.py
+new file mode 100644
+index 0000000..33c8ec1
+--- /dev/null
++++ b/examples/espeak_fallback.py
+@@ -0,0 +1,9 @@
++from _common import load_g2p, parser
++
++args = parser("Show Piper lexicon-first fallback configuration").parse_args()
++print("Use get_g2p(..., lexicons=(...), use_espeak_fallback=True) for lexicon miss fallback.")
++g2p = load_g2p(args)
++try:
++    print(g2p.phonemize("Hello world"))
++finally:
++    g2p.close()
+diff --git a/examples/explicit_language_spans.py b/examples/explicit_language_spans.py
+new file mode 100644
+index 0000000..f964449
+--- /dev/null
++++ b/examples/explicit_language_spans.py
+@@ -0,0 +1,12 @@
++from _common import load_g2p, parser
++
++from piperg2p import OverrideSpan
++
++args = parser("Route one source span through an explicit eSpeak voice").parse_args()
++g2p = load_g2p(args)
++try:
++    result = g2p.phonemize_prepared("Hello Welt", overrides=[OverrideSpan(6, 10, {"lang": "de-de"})])
++    print(result.phonemes)
++    print(result.language_routes)
++finally:
++    g2p.close()
+diff --git a/examples/external_annotations.py b/examples/external_annotations.py
+new file mode 100644
+index 0000000..2584d7c
+--- /dev/null
++++ b/examples/external_annotations.py
+@@ -0,0 +1,12 @@
++from _common import load_g2p, parser
++
++from piperg2p import TokenAnnotation
++
++args = parser("Pass source-aligned POS and lexicon tags").parse_args()
++g2p = load_g2p(args)
++try:
++    result = g2p.phonemize_prepared("Hello world", annotations=[TokenAnnotation(0, 5, tag="NN")])
++    print([(token.text, token.meta) for token in result.tokens])
++    print(result.phonemes)
++finally:
++    g2p.close()
+diff --git a/examples/lexicon_selection.py b/examples/lexicon_selection.py
+new file mode 100644
+index 0000000..39edd3e
+--- /dev/null
++++ b/examples/lexicon_selection.py
+@@ -0,0 +1,7 @@
++from _common import parser
++
++from piperg2p import available_lexicons, lexicon_info
++
++args = parser("Inspect locally installed pronunciation assets").parse_args()
++for name in available_lexicons(args.language):
++    print(name, lexicon_info(args.language, name))
+diff --git a/examples/marker_demo.py b/examples/marker_demo.py
+new file mode 100644
+index 0000000..16d0b81
+--- /dev/null
++++ b/examples/marker_demo.py
+@@ -0,0 +1,13 @@
++from _common import load_g2p, parser
++
++from piperg2p import apply_marker_overrides, parse_delimited
++
++args = parser("Convert marked source ranges to Piper overrides").parse_args()
++clean, ranges, warnings = parse_delimited("Say @hello@ today")
++g2p = load_g2p(args)
++try:
++    result = g2p.phonemize_prepared(clean, overrides=apply_marker_overrides(clean, ranges, {1: {"lang": args.language}}))
++    print(result.phonemes)
++    print(warnings + result.warnings)
++finally:
++    g2p.close()
+diff --git a/examples/mixed_language_auto.py b/examples/mixed_language_auto.py
+new file mode 100644
+index 0000000..90cc4c8
+--- /dev/null
++++ b/examples/mixed_language_auto.py
+@@ -0,0 +1,14 @@
++from _common import load_g2p, parser
++
++from piperg2p import LanguageRoutingConfig
++
++args = parser("Conservative lexicon-evidence language routing").parse_args()
++g2p = load_g2p(args)
++try:
++    routing = LanguageRoutingConfig(mode="auto", languages=(args.language, "de-de"), lexicons={})
++    result = g2p.phonemize_prepared("Hello Welt", language_routing=routing)
++    print(result.phonemes)
++    for route in result.language_routes:
++        print(route)
++finally:
++    g2p.close()
+diff --git a/examples/new_api_demo.py b/examples/new_api_demo.py
+new file mode 100644
+index 0000000..88fe737
+--- /dev/null
++++ b/examples/new_api_demo.py
+@@ -0,0 +1,13 @@
++from _common import load_g2p, parser
++
++from piperg2p import OverrideSpan
++
++args = parser("Basic PiperG2P prepared API").parse_args()
++g2p = load_g2p(args)
++try:
++    result = g2p.phonemize_prepared("Hello world", overrides=[OverrideSpan(0, 5, {"lang": args.language})])
++    print(result.phonemes)
++    print(result.ids)
++    print(result.warnings)
++finally:
++    g2p.close()
+diff --git a/examples/result_inspection.py b/examples/result_inspection.py
+new file mode 100644
+index 0000000..ba3dfc1
+--- /dev/null
++++ b/examples/result_inspection.py
+@@ -0,0 +1,16 @@
++from _common import load_g2p, parser
++
++from piperg2p import ids_to_phonemes
++
++args = parser("Inspect source tokens, sentences, IDs, and decoded symbols").parse_args()
++g2p = load_g2p(args)
++try:
++    result = g2p.phonemize_prepared("Hello world")
++    print(result.clean_text)
++    print(result.tokens)
++    print(result.sentences)
++    print(result.phonemes)
++    print(result.token_ids)
++    print(ids_to_phonemes(result.token_ids, g2p.config))
++finally:
++    g2p.close()
+diff --git a/examples/structured_stress.py b/examples/structured_stress.py
+new file mode 100644
+index 0000000..6c0292c
+--- /dev/null
++++ b/examples/structured_stress.py
+@@ -0,0 +1,11 @@
++from _common import load_g2p, parser
++
++from piperg2p import OverrideSpan
++
++args = parser("Apply structured stress after pronunciation resolution").parse_args()
++g2p = load_g2p(args)
++try:
++    result = g2p.phonemize_prepared("Hello", overrides=[OverrideSpan(0, 5, {"ph": "hello", "stress": 2})])
++    print(result.phonemes)
++finally:
++    g2p.close()
+diff --git a/piperg2p/__init__.py b/piperg2p/__init__.py
+index f975f31..a31b38d 100644
+--- a/piperg2p/__init__.py
++++ b/piperg2p/__init__.py
+@@ -3,6 +3,15 @@
+ from importlib.metadata import PackageNotFoundError
+ from importlib.metadata import version as _distribution_version
+
++from .api import (
++    PiperG2P,
++    get_g2p,
++    phoneme_ids,
++    phonemes,
++    phonemize,
++    phonemize_prepared,
++    tokenize,
++)
+ from .backends import (
+     EspeakBackend,
+     EspeakCliBackend,
+@@ -10,6 +19,7 @@ from .backends import (
+     PhonemeBackend,
+     TextBackend,
+ )
++from .cache import cache_info, clear_cache
+ from .codec import (
+     BOS,
+     EOS,
+@@ -20,6 +30,7 @@ from .codec import (
+     PinyinEncoder,
+     encode_phonemes,
+     encode_pinyin,
++    ids_to_phonemes,
+ )
+ from .config import PhonemeType, PiperConfig, VoiceConfig
+ from .diagnostics import BackendDiagnostics, FrontendDiagnostics
+@@ -44,13 +55,28 @@ from .errors import (
+     UnsupportedPhonemeTypeError,
+ )
+ from .frontend import PiperFrontend
++from .language_routing import normalize_language, route_language
++from .lexicons.registry import available_lexicons, lexicon_info
++from .markers import apply_marker_overrides, parse_delimited
+ from .raw_blocks import (
+     RawPhonemeSegment,
+     TextSegment,
+     compose_raw_segments,
+     parse_raw_blocks,
+ )
+-from .types import PhonemeSentence, PhonemizeResult
++from .stress import apply_stress
++from .types import (
++    LanguageRoute,
++    LanguageRoutingConfig,
++    LexiconEvidence,
++    OverrideSpan,
++    OverrideSpanLike,
++    PhonemeSentence,
++    PhonemizeResult,
++    TokenAnnotation,
++    TokenAnnotationLike,
++    TokenSpan,
++)
+
+ try:
+     __version__ = _distribution_version("piperg2p")
+@@ -72,14 +98,19 @@ __all__ = [
+     "EspeakBackend",
+     "EspeakCliBackend",
+     "FrontendDiagnostics",
++    "LanguageRoute",
++    "LanguageRoutingConfig",
+     "LexiconConfigurationError",
+     "LexiconDependencyError",
+     "LexiconError",
++    "LexiconEvidence",
+     "LexiconResourceError",
+     "MissingPhonemeError",
+     "MissingPhonemePolicy",
+     "MissingPhonemeWarning",
+     "NativeEspeakProvider",
++    "OverrideSpan",
++    "OverrideSpanLike",
+     "PhonemeBackend",
+     "PhonemeSentence",
+     "PhonemeType",
+@@ -88,6 +119,7 @@ __all__ = [
+     "PinyinEncoder",
+     "PiperConfig",
+     "PiperFrontend",
++    "PiperG2P",
+     "PiperG2PError",
+     "PiperG2PWarning",
+     "RawPhonemeSegment",
+@@ -95,11 +127,30 @@ __all__ = [
+     "ResourceUnavailableError",
+     "TextBackend",
+     "TextSegment",
++    "TokenAnnotation",
++    "TokenAnnotationLike",
++    "TokenSpan",
+     "UnsupportedCompatibilityError",
+     "UnsupportedPhonemeTypeError",
+     "VoiceConfig",
++    "apply_marker_overrides",
++    "apply_stress",
++    "available_lexicons",
++    "cache_info",
++    "clear_cache",
+     "compose_raw_segments",
+     "encode_phonemes",
+     "encode_pinyin",
++    "get_g2p",
++    "ids_to_phonemes",
++    "lexicon_info",
++    "normalize_language",
++    "parse_delimited",
+     "parse_raw_blocks",
++    "phoneme_ids",
++    "phonemes",
++    "phonemize",
++    "phonemize_prepared",
++    "route_language",
++    "tokenize",
+ ]
+diff --git a/piperg2p/api.py b/piperg2p/api.py
+new file mode 100644
+index 0000000..9f39d10
+--- /dev/null
++++ b/piperg2p/api.py
+@@ -0,0 +1,304 @@
++"""Sibling-oriented high-level PiperG2P API."""
++
++from __future__ import annotations
++
++import unicodedata
++from collections.abc import Mapping, Sequence
++from pathlib import Path
++from typing import Any, Literal
++
++from .backends import EspeakBackend
++from .cache import cache_key, get_or_create
++from .codec import MissingPhonemePolicy
++from .config import PhonemeType, VoiceConfig
++from .errors import UnsupportedCompatibilityError
++from .frontend import PiperFrontend
++from .types import (
++    LanguageRoutingConfig,
++    OverrideSpanLike,
++    PhonemizeResult,
++    TokenAnnotationLike,
++    TokenSpan,
++)
++
++ConfigLike = VoiceConfig | str | Path | Mapping[str, Any]
++
++
++def _config(value: ConfigLike, *, strict: bool = True) -> VoiceConfig:
++    if isinstance(value, VoiceConfig):
++        return value
++    if isinstance(value, (str, Path)):
++        return VoiceConfig.from_json(value, strict=strict)
++    if isinstance(value, Mapping):
++        return VoiceConfig.from_dict(value, strict=strict)
++    raise TypeError("config must be a VoiceConfig, path, or mapping")
++
++
++def _validate_compatibility(
++    *,
++    use_spacy: bool | None,
++    spacy_model: str | None,
++    spacy_model_size: str | None,
++    use_goruut_fallback: bool,
++) -> None:
++    if use_spacy:
++        raise UnsupportedCompatibilityError("PiperG2P does not use spaCy")
++    if spacy_model is not None:
++        raise UnsupportedCompatibilityError("PiperG2P does not use spaCy models")
++    if spacy_model_size is not None:
++        raise UnsupportedCompatibilityError("PiperG2P does not use spaCy model sizes")
++    if use_goruut_fallback:
++        raise UnsupportedCompatibilityError("Goruut fallback is not supported by PiperG2P")
++
++
++def _token_is_word(value: str) -> bool:
++    return bool(value) and unicodedata.category(value)[0] in {"L", "N"}
++
++
++def tokenize(text: str, *, keep_punct: bool = True) -> list[TokenSpan]:
++    """Tokenize prepared text without changing its source coordinate space."""
++    tokens: list[TokenSpan] = []
++    position = 0
++    apostrophes = {"'", "’", "ʼ", "＇"}
++    hyphens = {"-", "‐", "‑", "‒", "–", "—", "−"}
++    while position < len(text):
++        value = text[position]
++        if _token_is_word(value):
++            start = position
++            position += 1
++            while position < len(text):
++                value = text[position]
++                if unicodedata.category(value).startswith("M") or _token_is_word(value):
++                    position += 1
++                    continue
++                if value in apostrophes | hyphens:
++                    next_position = position + 1
++                    if next_position < len(text) and _token_is_word(text[next_position]):
++                        position += 1
++                        continue
++                break
++            tokens.append(TokenSpan(text[start:position], start, position))
++            continue
++        if keep_punct and unicodedata.category(value)[0] in {"P", "S"}:
++            tokens.append(TokenSpan(value, position, position + 1))
++        position += 1
++    return tokens
++
++
++class PiperG2P:
++    """Reusable voice-config-driven facade over :class:`PiperFrontend`."""
++
++    def __init__(
++        self,
++        language: str,
++        config: ConfigLike,
++        *,
++        lexicons: str | Sequence[str] | None = None,
++        use_espeak_fallback: bool = True,
++        use_cli: bool = False,
++        strict: bool = True,
++        missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN,
++        lexicon_store: Any = None,
++        lexicon_backend: Any = None,
++        use_spacy: bool | None = None,
++        spacy_model: str | None = None,
++        spacy_model_size: str | None = None,
++        use_goruut_fallback: bool = False,
++    ) -> None:
++        if not language:
++            raise ValueError("language must not be empty")
++        _validate_compatibility(
++            use_spacy=use_spacy,
++            spacy_model=spacy_model,
++            spacy_model_size=spacy_model_size,
++            use_goruut_fallback=use_goruut_fallback,
++        )
++        self.language = language
++        self.config = _config(config, strict=strict)
++        self.use_espeak_fallback = use_espeak_fallback
++        self._frontend = PiperFrontend(
++            self.config,
++            backend=(
++                EspeakBackend(mode="cli", vowel_clusters=self.config.vowel_clusters)
++                if use_cli and self.config.phoneme_type is PhonemeType.ESPEAK
++                else None
++            ),
++            missing=missing,
++            lexicons=tuple([lexicons] if isinstance(lexicons, str) else lexicons or ()),
++            lexicon_store=lexicon_store,
++            lexicon_backend=lexicon_backend,
++            use_espeak_fallback=use_espeak_fallback,
++        )
++
++    @property
++    def frontend(self) -> PiperFrontend:
++        return self._frontend
++
++    def phonemize(self, text: str) -> str:
++        return self.phonemize_prepared(text).phonemes
++
++    def phonemize_prepared(
++        self,
++        text: str,
++        *,
++        overrides: Sequence[OverrideSpanLike] | None = None,
++        annotations: Sequence[TokenAnnotationLike] | None = None,
++        overlap: Literal["snap", "strict", "split"] = "snap",
++        strict_stress: bool = False,
++        language_routing: LanguageRoutingConfig | Mapping[str, Any] | None = None,
++    ) -> PhonemizeResult:
++        result = self._frontend.phonemize_prepared(
++            text, annotations=annotations
++        )
++        result.clean_text = text
++        result.extended_text = text
++        result.tokens = tokenize(text)
++        result.phonemes = "".join(sentence.phoneme_string for sentence in result.sentences)
++        result.token_ids = [identifier for sentence in result.sentences for identifier in sentence.ids]
++        if overrides or annotations or language_routing is not None:
++            from .spans import apply_overrides
++
++            result = apply_overrides(
++                self,
++                result,
++                text,
++                overrides=overrides or (),
++                annotations=annotations or (),
++                overlap=overlap,
++                strict_stress=strict_stress,
++                language_routing=language_routing,
++            )
++        elif strict_stress:
++            raise ValueError("strict_stress requires an override or annotation span")
++        return result
++
++    __call__ = phonemize_prepared
++
++    def lexicon_evidence(self, word: str, tag: str | None = None):
++        from .lexicons.registry import evidence_for_lookup
++
++        return evidence_for_lookup(self._frontend, word, tag=tag)
++
++    def close(self) -> None:
++        self._frontend.close()
++
++    def __enter__(self) -> PiperG2P:
++        return self
++
++    def __exit__(self, *_: object) -> None:
++        self.close()
++
++
++def get_g2p(
++    language: str,
++    *,
++    config: ConfigLike,
++    lexicons: str | Sequence[str] | None = None,
++    use_espeak_fallback: bool = True,
++    use_cli: bool = False,
++    strict: bool = True,
++    missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN,
++    lexicon_store: Any = None,
++    lexicon_backend: Any = None,
++    use_spacy: bool | None = None,
++    spacy_model: str | None = None,
++    spacy_model_size: str | None = None,
++    use_goruut_fallback: bool = False,
++) -> PiperG2P:
++    normalized_config = _config(config, strict=strict)
++    lexicon_names = tuple(
++        [lexicons] if isinstance(lexicons, str) else lexicons or ()
++    )
++    kwargs = {
++        "lexicons": lexicon_names,
++        "use_espeak_fallback": use_espeak_fallback,
++        "use_cli": use_cli,
++        "strict": strict,
++        "missing": missing,
++        "lexicon_store": lexicon_store,
++        "lexicon_backend": lexicon_backend,
++        "use_spacy": use_spacy,
++        "spacy_model": spacy_model,
++        "spacy_model_size": spacy_model_size,
++        "use_goruut_fallback": use_goruut_fallback,
++    }
++    if lexicon_backend is not None or lexicon_store is not None:
++        return PiperG2P(language, normalized_config, **kwargs)
++    key = cache_key(
++        normalized_config,
++        language,
++        use_cli=use_cli,
++        missing=MissingPhonemePolicy(missing).value,
++        lexicons=lexicon_names,
++        strict=strict,
++        use_espeak_fallback=use_espeak_fallback,
++    )
++    return get_or_create(
++        key, lambda: PiperG2P(language, normalized_config, **kwargs)
++    )
++
++
++def _require_g2p(
++    language: str,
++    config: ConfigLike | None,
++    g2p: PiperG2P | None,
++    **kwargs: Any,
++) -> PiperG2P:
++    if g2p is not None:
++        if config is not None:
++            raise TypeError("config must be omitted when reusing g2p")
++        return g2p
++    if config is None:
++        raise TypeError("config is required when g2p is not supplied")
++    return get_g2p(language, config=config, **kwargs)
++
++
++def phonemize_prepared(
++    text: str,
++    language: str,
++    *,
++    config: ConfigLike | None = None,
++    overrides: Sequence[OverrideSpanLike] | None = None,
++    annotations: Sequence[TokenAnnotationLike] | None = None,
++    return_ids: bool = True,
++    return_phonemes: bool = True,
++    overlap: Literal["snap", "strict", "split"] = "snap",
++    lexicons: str | Sequence[str] | None = None,
++    use_espeak_fallback: bool = True,
++    use_cli: bool = False,
++    strict: bool = True,
++    strict_stress: bool = False,
++    g2p: PiperG2P | None = None,
++    language_routing: LanguageRoutingConfig | Mapping[str, Any] | None = None,
++    missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN,
++) -> PhonemizeResult:
++    del return_ids, return_phonemes
++    frontend = _require_g2p(
++        language,
++        config,
++        g2p,
++        lexicons=lexicons,
++        use_espeak_fallback=use_espeak_fallback,
++        use_cli=use_cli,
++        strict=strict,
++        missing=missing,
++    )
++    return frontend.phonemize_prepared(
++        text,
++        overrides=overrides,
++        annotations=annotations,
++        overlap=overlap,
++        strict_stress=strict_stress,
++        language_routing=language_routing,
++    )
++
++
++phonemize = phonemize_prepared
++
++
++def phonemes(*args: Any, **kwargs: Any) -> str:
++    return phonemize_prepared(*args, **kwargs).phonemes
++
++
++def phoneme_ids(*args: Any, **kwargs: Any) -> list[int]:
++    return list(phonemize_prepared(*args, **kwargs).token_ids)
+\ No newline at end of file
+diff --git a/piperg2p/backends/espeak/backend.py b/piperg2p/backends/espeak/backend.py
+index 9a9d642..21b1208 100644
+--- a/piperg2p/backends/espeak/backend.py
++++ b/piperg2p/backends/espeak/backend.py
+@@ -50,6 +50,15 @@ class EspeakBackend:
+                     fallback_reason = "terminator API unavailable"
+                 else:
+                     fallback_reason = f"{type(exc).__name__}: {exc}"
++                self._provider = EspeakCliBackend(
++                    executable=self.executable,
++                    data_path=self.data,
++                    vowel_clusters=self.vowel_clusters
++                    if self.merge_vowel_clusters
++                    else frozenset(),
++                    timeout=self.timeout,
++                )
++        else:
+             self._provider = EspeakCliBackend(
+                 executable=self.executable,
+                 data_path=self.data,
+diff --git a/piperg2p/cache.py b/piperg2p/cache.py
+new file mode 100644
+index 0000000..4b9da4b
+--- /dev/null
++++ b/piperg2p/cache.py
+@@ -0,0 +1,85 @@
++"""Small bounded cache for reusable PiperG2P facades."""
++
++from __future__ import annotations
++
++import hashlib
++import json
++from collections import OrderedDict, namedtuple
++from collections.abc import Callable
++from typing import Any
++
++from .config import VoiceConfig
++
++CacheInfo = namedtuple("CacheInfo", "size maxsize policy")
++_DEFAULT_MAXSIZE = 8
++_cache: OrderedDict[str, Any] = OrderedDict()
++_maxsize = _DEFAULT_MAXSIZE
++
++
++def config_fingerprint(config: VoiceConfig) -> str:
++    payload = json.dumps(config.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
++    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
++
++
++def cache_key(
++    config: VoiceConfig,
++    language: str,
++    *,
++    use_cli: bool,
++    missing: str,
++    lexicons: tuple[str, ...],
++    strict: bool,
++    use_espeak_fallback: bool,
++) -> str:
++    value = {
++        "language": language.casefold().replace("_", "-"),
++        "config": config_fingerprint(config),
++        "use_cli": use_cli,
++        "missing": missing,
++        "lexicons": lexicons,
++        "strict": strict,
++        "use_espeak_fallback": use_espeak_fallback,
++    }
++    return json.dumps(value, sort_keys=True, separators=(",", ":"))
++
++
++def get_or_create(key: str, factory: Callable[[], Any]) -> Any:
++    value = _cache.get(key)
++    if value is not None:
++        _cache.move_to_end(key)
++        return value
++    value = factory()
++    _cache[key] = value
++    _cache.move_to_end(key)
++    while len(_cache) > _maxsize:
++        _, evicted = _cache.popitem(last=False)
++        close = getattr(evicted, "close", None)
++        if close is not None:
++            close()
++    return value
++
++
++def cache_info() -> CacheInfo:
++    return CacheInfo(len(_cache), _maxsize, "lru")
++
++
++def clear_cache(*, deep: bool = False) -> None:
++    del deep
++    values = tuple(_cache.values())
++    _cache.clear()
++    for value in values:
++        close = getattr(value, "close", None)
++        if close is not None:
++            close()
++
++
++def set_maxsize(value: int) -> None:
++    global _maxsize
++    if value <= 0:
++        raise ValueError("cache maxsize must be positive")
++    _maxsize = value
++    while len(_cache) > _maxsize:
++        _, evicted = _cache.popitem(last=False)
++        close = getattr(evicted, "close", None)
++        if close is not None:
++            close()
+\ No newline at end of file
+diff --git a/piperg2p/codec.py b/piperg2p/codec.py
+index af199bd..ea07a78 100644
+--- a/piperg2p/codec.py
++++ b/piperg2p/codec.py
+@@ -3,8 +3,10 @@ from __future__ import annotations
+ import warnings
+ from collections.abc import Mapping, Sequence
+ from enum import Enum
++from pathlib import Path
+ from typing import Protocol
+
++from .config import VoiceConfig
+ from .errors import ConfigError, MissingPhonemeError, MissingPhonemeWarning
+ from .types import EncodeResult
+
+@@ -121,3 +123,46 @@ def encode_pinyin(
+     missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN,
+ ) -> EncodeResult:
+     return PinyinEncoder().encode(phonemes, id_map, missing)
++
++
++def ids_to_phonemes(ids: Sequence[int], config: object) -> str:
++    """Decode framed Piper IDs using one explicit voice configuration."""
++    if not isinstance(config, VoiceConfig):
++        if isinstance(config, (str, Path)):
++            config = VoiceConfig.from_json(config)
++        elif isinstance(config, Mapping):
++            config = VoiceConfig.from_dict(config)
++        else:
++            raise TypeError("config must be a VoiceConfig, path, or mapping")
++    values = tuple(int(value) for value in ids)
++    bos = tuple(config.phoneme_id_map[BOS])
++    pad = tuple(config.phoneme_id_map[PAD])
++    eos = tuple(config.phoneme_id_map[EOS])
++    if values[: len(bos) + len(pad)] == bos + pad:
++        values = values[len(bos) + len(pad) :]
++    if values[-len(eos) :] == eos:
++        values = values[: -len(eos)]
++    candidates: dict[tuple[int, ...], str] = {}
++    for symbol, symbol_ids in config.phoneme_id_map.items():
++        if symbol in {BOS, PAD, EOS}:
++            continue
++        key = tuple(symbol_ids)
++        previous = candidates.get(key)
++        if previous is not None and previous != symbol:
++            raise ConfigError(f"ambiguous ID mapping for {key!r}: {previous!r}, {symbol!r}")
++        candidates[key] = symbol
++    keys = sorted(candidates, key=len, reverse=True)
++    output: list[str] = []
++    position = 0
++    while position < len(values):
++        matches = [key for key in keys if values[position : position + len(key)] == key]
++        if not matches:
++            raise ConfigError(f"cannot decode Piper ID sequence at position {position}")
++        longest = matches[0]
++        if len(matches) > 1 and len(matches[1]) == len(longest):
++            raise ConfigError(f"ambiguous Piper ID sequence at position {position}")
++        output.append(candidates[longest])
++        position += len(longest)
++        if values[position : position + len(pad)] == pad:
++            position += len(pad)
++    return "".join(output)
+diff --git a/piperg2p/frontend.py b/piperg2p/frontend.py
+index 231c3b8..129349b 100644
+--- a/piperg2p/frontend.py
++++ b/piperg2p/frontend.py
+@@ -37,7 +37,9 @@ class PiperFrontend:
+         lexicons: Sequence[str] = (),
+         lexicon_store: Any = None,
+         lexicon_backend: PronunciationLookup | None = None,
++        use_espeak_fallback: bool = True,
+     ) -> None:
++        self.use_espeak_fallback = use_espeak_fallback
+         self.config = config
+         self.missing = MissingPhonemePolicy(missing)
+         self._spec = spec_for(config)
+@@ -137,7 +139,9 @@ class PiperFrontend:
+             lexicon=self._lexicon_diagnostics(),
+         )
+
+-    def phonemize_prepared(self, text: str) -> PhonemizeResult:
++    def phonemize_prepared(
++        self, text: str, *, annotations: Sequence[Any] | None = None
++    ) -> PhonemizeResult:
+         if self.config.phoneme_type is PhonemeType.ESPEAK:
+             segments = parse_raw_blocks(text)
+             if self._lexicon_enabled:
+@@ -149,6 +153,8 @@ class PiperFrontend:
+                         value, voice=self.config.espeak_voice
+                     ),
+                     vowel_clusters=self.config.vowel_clusters,
++                    fallback=self.use_espeak_fallback,
++                    annotations=annotations or (),
+                 )
+             else:
+                 groups = compose_raw_segments(
+@@ -173,10 +179,10 @@ class PiperFrontend:
+             )
+             warning_messages.extend(encoded.warnings)
+         return PhonemizeResult(
+-            text=text,
++            clean_text=text,
+             sentences=tuple(sentences),
+             diagnostics=self.diagnostics,
+-            warnings=tuple(warning_messages),
++            warnings=warning_messages,
+         )
+
+     phonemize = phonemize_prepared
+diff --git a/piperg2p/language_routing.py b/piperg2p/language_routing.py
+new file mode 100644
+index 0000000..311f133
+--- /dev/null
++++ b/piperg2p/language_routing.py
+@@ -0,0 +1,61 @@
++"""Conservative, evidence-only language routing."""
++
++from __future__ import annotations
++
++from collections.abc import Callable, Mapping
++from typing import Any
++
++from .types import LanguageRoute, LanguageRoutingConfig
++
++
++def normalize_language(language: str) -> str:
++    return language.strip().casefold().replace("_", "-")
++
++
++def coerce_routing(value: LanguageRoutingConfig | Mapping[str, Any] | None) -> LanguageRoutingConfig | None:
++    if value is None or isinstance(value, LanguageRoutingConfig):
++        return value
++    return LanguageRoutingConfig(
++        mode=str(value.get("mode", "explicit")),
++        languages=tuple(value.get("languages", ())),
++        lexicons=value.get("lexicons", {}),
++    )
++
++
++def _has_evidence(source: Any, word: str) -> bool:
++    if source is None:
++        return False
++    if isinstance(source, Mapping):
++        return word in source or word.casefold() in source
++    lookup = getattr(source, "lookup", None)
++    if lookup is not None:
++        return lookup(word) is not None
++    if callable(source):
++        return bool(source(word))
++    return False
++
++
++def route_language(
++    word: str,
++    default_language: str,
++    routing: LanguageRoutingConfig,
++    *,
++    evidence: Callable[[str, str], bool] | None = None,
++) -> LanguageRoute:
++    """Choose a language only when exactly one configured candidate has evidence."""
++    default = normalize_language(default_language)
++    candidates = tuple(normalize_language(value) for value in routing.languages)
++    matches = [
++        language
++        for language in candidates
++        if language != default
++        and (
++            evidence(word, language)
++            if evidence is not None
++            else _has_evidence(routing.lexicons.get(language), word)
++        )
++    ]
++    if len(matches) == 1:
++        return LanguageRoute(0, len(word), matches[0], default, "lexicon-evidence", (word,))
++    reason = "default-language" if not matches else "ambiguous-lexicon-evidence"
++    return LanguageRoute(0, len(word), default, default, reason, tuple(matches))
+\ No newline at end of file
+diff --git a/piperg2p/lexicons/__init__.py b/piperg2p/lexicons/__init__.py
+index 51b06e4..ca766f3 100644
+--- a/piperg2p/lexicons/__init__.py
++++ b/piperg2p/lexicons/__init__.py
+@@ -9,6 +9,7 @@ from .base import (
+ )
+ from .g2lex import G2LexLookup
+ from .lexphon import LexphonLookup
++from .registry import available_lexicons, evidence_for_lookup, lexicon_info
+
+ __all__ = [
+     "SUPPORTED_PHONEME_ENCODINGS",
+@@ -18,6 +19,9 @@ __all__ = [
+     "LexiconProvenance",
+     "LexphonLookup",
+     "PronunciationLookup",
++    "available_lexicons",
+     "compatibility_for_encodings",
++    "evidence_for_lookup",
++    "lexicon_info",
+     "normalize_phoneme_encoding",
+ ]
+diff --git a/piperg2p/lexicons/lexphon.py b/piperg2p/lexicons/lexphon.py
+index bc735a9..7e9cc81 100644
+--- a/piperg2p/lexicons/lexphon.py
++++ b/piperg2p/lexicons/lexphon.py
+@@ -64,7 +64,7 @@ class LexphonLookup:
+         if self._runtime is not None:
+             return self._runtime
+         try:
+-            import lexphon
++            import lexphon  # type: ignore[import-not-found]
+         except ImportError as exc:
+             raise LexiconDependencyError(
+                 "Lexphon support requires the optional 'lexphon' extra. "
+diff --git a/piperg2p/lexicons/overlay.py b/piperg2p/lexicons/overlay.py
+index 899464e..7d2976c 100644
+--- a/piperg2p/lexicons/overlay.py
++++ b/piperg2p/lexicons/overlay.py
+@@ -1,7 +1,7 @@
+ from __future__ import annotations
+
+ import unicodedata
+-from collections.abc import Callable, Iterable
++from collections.abc import Callable, Iterable, Sequence
+
+ from ..backends.espeak.clauses import merge_vowel_clusters
+ from ..errors import LexiconResourceError
+@@ -15,6 +15,27 @@ from .base import PronunciationLookup
+ from .spans import scan_source_spans
+
+
++def _tag_for_span(annotations: Sequence[object], start: int, end: int) -> str | None:
++    for annotation in annotations:
++        if isinstance(annotation, dict):
++            annotation_start = annotation.get("start", annotation.get("char_start"))
++            annotation_end = annotation.get("end", annotation.get("char_end"))
++            tag = annotation.get("tag")
++        else:
++            annotation_start = getattr(annotation, "start", getattr(annotation, "char_start", None))
++            annotation_end = getattr(annotation, "end", getattr(annotation, "char_end", None))
++            tag = getattr(annotation, "tag", None)
++        if (
++            tag is not None
++            and isinstance(annotation_start, int)
++            and isinstance(annotation_end, int)
++            and annotation_start <= start
++            and annotation_end >= end
++        ):
++            return str(tag)
++    return None
++
++
+ def _coalesce_text_segments(
+     segments: Iterable[PreparedSegment],
+ ) -> tuple[PreparedSegment, ...]:
+@@ -56,12 +77,25 @@ def overlay_text_segment(
+     lookup: PronunciationLookup,
+     *,
+     tag: str | None = None,
++    fallback: bool = True,
++    annotations: Sequence[object] = (),
+ ) -> tuple[PreparedSegment, ...]:
+     spans = scan_source_spans(segment.value)
+     words = tuple(span.text for span in spans if span.kind == "word")
+     if not words:
+         return (segment,)
+-    hits = lookup.lookup_many(words, tag=tag)
++    if annotations:
++        hits = tuple(
++            lookup.lookup(
++                word,
++                tag=_tag_for_span(
++                    annotations, segment.source_start + span.start, segment.source_start + span.end
++                ),
++            )
++            for span, word in zip((span for span in spans if span.kind == "word"), words, strict=True)
++        )
++    else:
++        hits = lookup.lookup_many(words, tag=tag)
+     if len(hits) != len(words):
+         raise LexiconResourceError("lexicon lookup returned an invalid batch length")
+     hit_index = 0
+@@ -75,6 +109,10 @@ def overlay_text_segment(
+         pronunciation = hits[hit_index]
+         hit_index += 1
+         if pronunciation is None:
++            if not fallback:
++                raise LexiconResourceError(
++                    f"lexicon miss for {span.text!r} and eSpeak fallback is disabled"
++                )
+             prepared.append(PreparedSegment("text", span.text, start, end, "source"))
+         else:
+             prepared.append(
+@@ -90,15 +128,26 @@ def overlay_text_segment(
+
+
+ def prepare_lexicon_segments(
+-    segments: Iterable[Segment], lookup: PronunciationLookup, *, tag: str | None = None
+-) -> tuple[PreparedSegment, ...]:
++    segments: Iterable[Segment],
++    lookup: PronunciationLookup,
++    *,
++    tag: str | None = None,
++    fallback: bool = True,
++    annotations: Sequence[object] = (),
++ ) -> tuple[PreparedSegment, ...]:
+     prepared = prepare_segments(segments)
+     output: list[PreparedSegment] = []
+     for segment in prepared:
+         if segment.kind == "phonemes":
+             output.append(segment)
+         else:
+-            overlayed = overlay_text_segment(segment, lookup, tag=tag)
++            overlayed = overlay_text_segment(
++                segment,
++                lookup,
++                tag=tag,
++                fallback=fallback,
++                annotations=annotations,
++            )
+             for item in overlayed:
+                 if item.kind == "text" and item.value.isspace():
+                     output.append(
+@@ -122,7 +171,15 @@ def compose_lexicon_overlay(
+     *,
+     vowel_clusters: frozenset[tuple[str, ...]] = frozenset(),
+     tag: str | None = None,
+-) -> list[list[str]]:
+-    prepared = prepare_lexicon_segments(segments, lookup, tag=tag)
++    fallback: bool = True,
++    annotations: Sequence[object] = (),
++ ) -> list[list[str]]:
++    prepared = prepare_lexicon_segments(
++        segments,
++        lookup,
++        tag=tag,
++        fallback=fallback,
++        annotations=annotations,
++    )
+     groups = compose_prepared_segments(prepared, phonemize_text)
+     return [merge_vowel_clusters(list(group), vowel_clusters) for group in groups]
+diff --git a/piperg2p/lexicons/registry.py b/piperg2p/lexicons/registry.py
+new file mode 100644
+index 0000000..8857596
+--- /dev/null
++++ b/piperg2p/lexicons/registry.py
+@@ -0,0 +1,103 @@
++"""Local Lexphon pronunciation asset discovery and evidence helpers."""
++
++from __future__ import annotations
++
++from collections.abc import Mapping
++from types import MappingProxyType
++from typing import Any
++
++from ..language_routing import normalize_language
++from ..types import LexiconEvidence
++
++
++def _store(store: Any = None) -> Any:
++    if store is not None:
++        return store
++    try:
++        import lexphon  # type: ignore[import-not-found]
++    except ImportError as exc:
++        from ..errors import LexiconDependencyError
++
++        raise LexiconDependencyError(
++            "Lexicon discovery requires the optional 'lexphon' extra. Install piperg2p[lexphon]."
++        ) from exc
++    return lexphon.DataStore()
++
++
++def _metadata_items(store: Any) -> list[dict[str, Any]]:
++    installed = getattr(store, "installed", None)
++    if installed is None:
++        return []
++    values = installed()
++    return [dict(value) for value in values if isinstance(value, Mapping)]
++
++
++def _is_pronunciation(item: Mapping[str, Any]) -> bool:
++    return str(item.get("kind", "pronunciation")).casefold() == "pronunciation"
++
++
++def _language_matches(item: Mapping[str, Any], language: str) -> bool:
++    declared = item.get("language", item.get("locale"))
++    return declared is None or normalize_language(str(declared)).startswith(normalize_language(language))
++
++
++def _public_name(item: Mapping[str, Any]) -> str:
++    identifier = str(item.get("id", item.get("lexicon_id", "")))
++    return identifier.rsplit(":", 1)[-1]
++
++
++def available_lexicons(language: str, *, store: Any = None) -> tuple[str, ...]:
++    """Return installed pronunciation asset short names in stable order."""
++    values = [
++        _public_name(item)
++        for item in _metadata_items(_store(store))
++        if _is_pronunciation(item) and _language_matches(item, language)
++    ]
++    return tuple(sorted(set(values)))
++
++
++def lexicon_info(language: str, name: str, *, store: Any = None) -> Mapping[str, Any]:
++    """Return read-only metadata for an installed pronunciation asset."""
++    data_store = _store(store)
++    requested = str(name)
++    candidates = [
++        item
++        for item in _metadata_items(data_store)
++        if _is_pronunciation(item)
++        and _language_matches(item, language)
++        and (str(item.get("id", "")) == requested or _public_name(item) == requested)
++    ]
++    if not candidates:
++        raise KeyError(f"lexicon {name!r} is not installed for {language!r}")
++    item = candidates[0]
++    identifier = str(item.get("id", item.get("lexicon_id", requested)))
++    result = {
++        "id": identifier,
++        "language": item.get("language", item.get("locale", language)),
++        "kind": item.get("kind", "pronunciation"),
++        "phoneme_encoding": item.get("phoneme_encoding", item.get("pronunciation_alphabet", "ipa")),
++        "data_version": item.get("data_version", item.get("version")),
++        "release_tag": item.get("release_tag"),
++        "asset_path": str(data_store.path(identifier)) if hasattr(data_store, "path") else item.get("asset_path"),
++    }
++    return MappingProxyType(result)
++
++
++def evidence_for_lookup(frontend: Any, word: str, *, tag: str | None = None) -> LexiconEvidence | None:
++    lookup = getattr(frontend, "_lexicon_backend", None)
++    if lookup is None and getattr(frontend, "_lexicon_enabled", False):
++        lookup = frontend._ensure_lexicon_backend()
++    if lookup is None:
++        return None
++    pronunciation = lookup.lookup(word, tag=tag)
++    if pronunciation is None:
++        return None
++    provenance = pronunciation.provenance
++    return LexiconEvidence(
++        lexicon_id=pronunciation.lexicon_id or (provenance.lexicon_id if provenance else None),
++        lexicon_name=(pronunciation.lexicon_id or pronunciation.source),
++        matched_key=pronunciation.matched_key or word,
++        source_encoding=pronunciation.source_encoding,
++        pronunciation=pronunciation.pronunciation,
++        provenance=provenance,
++    )
+\ No newline at end of file
+diff --git a/piperg2p/markers.py b/piperg2p/markers.py
+new file mode 100644
+index 0000000..02c44af
+--- /dev/null
++++ b/piperg2p/markers.py
+@@ -0,0 +1,67 @@
++"""Marker parsing helpers for source-aligned pronunciation overrides."""
++
++from __future__ import annotations
++
++from collections.abc import Mapping, Sequence
++
++from .types import OverrideSpan
++
++
++def parse_delimited(
++    text: str, marker: str = "@", escape: str = "\\"
++) -> tuple[str, list[tuple[int, int]], list[str]]:
++    """Remove paired markers and return clean-text offsets and warnings."""
++    if not marker or not escape:
++        raise ValueError("marker and escape must not be empty")
++    output: list[str] = []
++    ranges: list[tuple[int, int]] = []
++    warnings: list[str] = []
++    position = 0
++    marked_start: int | None = None
++    source_marker_start: int | None = None
++    while position < len(text):
++        if text.startswith(escape, position) and position + len(escape) < len(text):
++            escaped = text[position + len(escape)]
++            if escaped in {marker, escape}:
++                output.append(escaped)
++                position += len(escape) + 1
++                continue
++        if text.startswith(marker, position):
++            if marked_start is None:
++                marked_start = len(output)
++                source_marker_start = position
++            else:
++                ranges.append((marked_start, len(output)))
++                marked_start = None
++                source_marker_start = None
++            position += len(marker)
++            continue
++        output.append(text[position])
++        position += 1
++    if marked_start is not None:
++        warnings.append(f"Unmatched opening marker at position {source_marker_start}")
++        output.insert(marked_start, marker)
++    return "".join(output), ranges, warnings
++
++
++def apply_marker_overrides(
++    clean_text: str,
++    marked_ranges: Sequence[tuple[int, int]],
++    assignments: Sequence[Mapping[str, str]] | Mapping[int, Mapping[str, str]],
++) -> list[OverrideSpan]:
++    """Apply ordinal or sequence assignments to ranges from parse_delimited."""
++    if isinstance(assignments, Mapping):
++        result: list[OverrideSpan] = []
++        for ordinal, attrs in assignments.items():
++            if not isinstance(ordinal, int) or ordinal < 1 or ordinal > len(marked_ranges):
++                raise ValueError(f"assignment index {ordinal!r} is out of range")
++            start, end = marked_ranges[ordinal - 1]
++            result.append(OverrideSpan(start, end, attrs))
++        return result
++    if len(assignments) != len(marked_ranges):
++        raise ValueError("assignment sequence length must match marked ranges")
++    return [
++        OverrideSpan(start, end, attrs)
++        for (start, end), attrs in zip(marked_ranges, assignments, strict=True)
++        if attrs
++    ]
+\ No newline at end of file
+diff --git a/piperg2p/spans.py b/piperg2p/spans.py
+new file mode 100644
+index 0000000..ff2860e
+--- /dev/null
++++ b/piperg2p/spans.py
+@@ -0,0 +1,257 @@
++"""Source-span override pipeline for the Piper facade."""
++
++from __future__ import annotations
++
++import unicodedata
++from collections.abc import Mapping, Sequence
++from typing import Any
++
++from .language_routing import coerce_routing, route_language
++from .stress import apply_stress
++from .types import (
++    LanguageRoute,
++    LanguageRoutingConfig,
++    OverrideSpan,
++    OverrideSpanLike,
++    PhonemeSentence,
++    PhonemizeResult,
++    TokenAnnotation,
++    TokenAnnotationLike,
++    TokenSpan,
++)
++
++
++def _as_override(value: OverrideSpanLike) -> OverrideSpan:
++    if isinstance(value, OverrideSpan):
++        return value
++    if isinstance(value, Mapping):
++        start = value.get("char_start", value.get("start"))
++        end = value.get("char_end", value.get("end"))
++        attrs = value.get("attrs", {})
++        if start is None or end is None:
++            raise ValueError("override mapping requires start and end")
++        if not attrs:
++            attrs = {key: item for key, item in value.items() if key not in {"start", "end", "char_start", "char_end"}}
++        return OverrideSpan(int(start), int(end), attrs)
++    if isinstance(value, Sequence) and len(value) == 3:
++        return OverrideSpan(int(value[0]), int(value[1]), value[2])
++    raise TypeError("override must be OverrideSpan, mapping, or (start, end, attrs)")
++
++
++def _as_annotation(value: TokenAnnotationLike) -> TokenAnnotation:
++    if isinstance(value, TokenAnnotation):
++        return value
++    if isinstance(value, Mapping):
++        return TokenAnnotation(
++            int(value.get("start", value.get("char_start"))),
++            int(value.get("end", value.get("char_end"))),
++            value.get("text"),
++            value.get("pos"),
++            value.get("tag"),
++            value.get("lemma"),
++            value.get("language"),
++        )
++    raise TypeError("annotation must be TokenAnnotation or mapping")
++
++
++def _snap_overrides(
++    text: str,
++    values: Sequence[OverrideSpanLike],
++    overlap: str,
++) -> tuple[list[OverrideSpan], list[str]]:
++    tokens = _tokenize(text)
++    boundaries = {0, len(text)} | {token.char_start for token in tokens} | {
++        token.char_end for token in tokens
++    }
++    result: list[OverrideSpan] = []
++    warnings: list[str] = []
++    for raw in values:
++        value = _as_override(raw)
++        start, end = value.char_start, value.char_end
++        if end > len(text):
++            raise ValueError(f"override span ({start}, {end}) is outside source text")
++        snapped_start, snapped_end = start, end
++        if overlap == "snap":
++            for token in tokens:
++                if token.char_start < start < token.char_end:
++                    snapped_start = token.char_start
++                if token.char_start < end < token.char_end:
++                    snapped_end = token.char_end
++            if (snapped_start, snapped_end) != (start, end):
++                warnings.append(
++                    f"override span ({start}, {end}) snapped to ({snapped_start}, {snapped_end})"
++                )
++        elif overlap == "strict" and (start not in boundaries or end not in boundaries):
++            warnings.append(f"override span ({start}, {end}) partially overlaps a token; skipped")
++            continue
++        elif overlap not in {"split", "strict", "snap"}:
++            raise ValueError("overlap must be 'snap', 'strict', or 'split'")
++        result.append(OverrideSpan(snapped_start, snapped_end, value.attrs))
++    result.sort(key=lambda item: (item.char_start, item.char_end))
++    accepted: list[OverrideSpan] = []
++    for value in result:
++        if accepted and value.char_start < accepted[-1].char_end:
++            warnings.append(
++                f"overlapping override spans ({value.char_start}, {value.char_end}) and "
++                f"({accepted[-1].char_start}, {accepted[-1].char_end})"
++            )
++            if overlap == "strict":
++                continue
++            raise ValueError("overlapping override spans are not supported")
++        accepted.append(value)
++    return accepted, warnings
++
++
++def _tokenize(text: str) -> list[TokenSpan]:
++    from .api import tokenize
++
++    return tokenize(text)
++
++
++def _symbols(value: str, id_map: Mapping[str, Sequence[int]]) -> list[str]:
++    value = unicodedata.normalize("NFD", value)
++    keys = sorted((key for key in id_map if key not in {"^", "_", "$"}), key=len, reverse=True)
++    output: list[str] = []
++    position = 0
++    while position < len(value):
++        match = next((key for key in keys if value.startswith(key, position)), None)
++        if match is None:
++            output.append(value[position])
++            position += 1
++        else:
++            output.append(match)
++            position += len(match)
++    return output
++
++
++def _phonemize_text(g2p: Any, text: str, language: str) -> list[list[str]]:
++    if not text:
++        return []
++    return g2p.frontend.backend.phonemize(text, voice=language)
++
++
++def _update_token_metadata(
++    tokens: list[TokenSpan],
++    annotations: Sequence[TokenAnnotation],
++    overrides: Sequence[OverrideSpan],
++) -> None:
++    for annotation in annotations:
++        for token in tokens:
++            if token.char_start >= annotation.start and token.char_end <= annotation.end:
++                if annotation.pos is not None:
++                    token.meta["pos"] = annotation.pos
++                if annotation.tag is not None:
++                    token.meta["tag"] = annotation.tag
++                if annotation.lemma is not None:
++                    token.meta["lemma"] = annotation.lemma
++                if annotation.language is not None:
++                    token.lang = annotation.language
++    for override in overrides:
++        for token in tokens:
++            if token.char_start >= override.char_start and token.char_end <= override.char_end:
++                token.meta["override"] = dict(override.attrs)
++                if "lang" in override.attrs:
++                    token.lang = str(override.attrs["lang"])
++
++
++def apply_overrides(
++    g2p: Any,
++    base: PhonemizeResult,
++    text: str,
++    *,
++    overrides: Sequence[OverrideSpanLike],
++    annotations: Sequence[TokenAnnotationLike],
++    overlap: str,
++    strict_stress: bool,
++    language_routing: LanguageRoutingConfig | Mapping[str, Any] | None,
++) -> PhonemizeResult:
++    normalized_annotations = [_as_annotation(value) for value in annotations]
++    for annotation in normalized_annotations:
++        if annotation.start < 0 or annotation.end > len(text) or annotation.end < annotation.start:
++            raise ValueError("annotation offsets must be within source text")
++        if annotation.text is not None and annotation.text != text[annotation.start : annotation.end]:
++            raise ValueError("annotation text does not match its source span")
++    normalized, warning_messages = _snap_overrides(text, overrides, overlap)
++    routes: list[LanguageRoute] = []
++    routing = coerce_routing(language_routing)
++    if routing is not None and routing.mode == "auto":
++        for token in _tokenize(text):
++            if not token.text or not token.text[0].isalnum():
++                continue
++            route = route_language(token.text, g2p.language, routing)
++            routes.append(
++                LanguageRoute(
++                    token.char_start,
++                    token.char_end,
++                    route.language,
++                    route.requested_language,
++                    route.reason,
++                    route.evidence,
++                )
++            )
++            if route.language != g2p.language:
++                normalized.append(OverrideSpan(token.char_start, token.char_end, {"lang": route.language}))
++        normalized.sort(key=lambda item: (item.char_start, item.char_end))
++    tokens = _tokenize(text)
++    _update_token_metadata(tokens, normalized_annotations, normalized)
++    if not normalized and routing is None:
++        base.clean_text = text
++        base.extended_text = text
++        base.tokens = tokens
++        return base
++
++    groups: list[list[str]] = []
++    cursor = 0
++    for override in normalized:
++        if cursor < override.char_start:
++            groups.extend(_phonemize_text(g2p, text[cursor : override.char_start], g2p.frontend.config.espeak_voice))
++        attrs = override.attrs
++        if "ph" in attrs:
++            resolved = str(attrs["ph"])
++            symbols = _symbols(resolved, g2p.config.phoneme_id_map)
++            if "stress" in attrs and any(char.isspace() for char in resolved):
++                warning_messages.append(
++                    f"structured stress skipped for multi-word phoneme override ({override.char_start}, {override.char_end})"
++                )
++            elif "stress" in attrs:
++                level = attrs["stress"]
++                stressed = apply_stress(resolved, level, strict=strict_stress)
++                symbols = _symbols(stressed, g2p.config.phoneme_id_map)
++            groups.append(symbols)
++        else:
++            language = str(attrs.get("lang", g2p.frontend.config.espeak_voice))
++            segment_groups = _phonemize_text(g2p, text[override.char_start : override.char_end], language)
++            if "stress" in attrs:
++                segment_groups = [
++                    _symbols(apply_stress("".join(group), attrs["stress"], strict=strict_stress), g2p.config.phoneme_id_map)
++                    for group in segment_groups
++                ]
++            groups.extend(segment_groups)
++        cursor = override.char_end
++    if cursor < len(text):
++        groups.extend(_phonemize_text(g2p, text[cursor:], g2p.frontend.config.espeak_voice))
++
++    sentences: list[PhonemeSentence] = []
++    missing: list[str] = []
++    warnings = list(base.warnings) + warning_messages
++    for group in groups:
++        encoded = g2p.frontend.encode(group)
++        sentences.append(
++            PhonemeSentence(tuple(group), encoded.ids, encoded.missing_phonemes, encoded.warnings)
++        )
++        missing.extend(encoded.missing_phonemes)
++        warnings.extend(encoded.warnings)
++    ids = [identifier for sentence in sentences for identifier in sentence.ids]
++    phoneme_string = "".join(sentence.phoneme_string for sentence in sentences)
++    return PhonemizeResult(
++        clean_text=text,
++        tokens=tokens,
++        extended_text=text,
++        phonemes=phoneme_string,
++        token_ids=ids,
++        warnings=warnings,
++        language_routes=routes,
++        sentences=tuple(sentences),
++        diagnostics=base.diagnostics,
++        missing_phonemes=tuple(missing),
++    )
+\ No newline at end of file
+diff --git a/piperg2p/stress.py b/piperg2p/stress.py
+new file mode 100644
+index 0000000..8d14dbc
+--- /dev/null
++++ b/piperg2p/stress.py
+@@ -0,0 +1,31 @@
++"""Small Piper stress override utility."""
++
++from __future__ import annotations
++
++import unicodedata
++
++from .errors import PiperG2PError
++
++_PRIMARY = "ˈ"
++_SECONDARY = "ˌ"
++
++
++def apply_stress(phonemes: str, level: int, *, strict: bool = False) -> str:
++    """Apply a structured stress level to resolved phoneme content."""
++    if level not in {-2, -1, 1, 2}:
++        if strict:
++            raise PiperG2PError("stress must be one of -2, -1, +1, or +2")
++        return phonemes
++    values = list(unicodedata.normalize("NFD", phonemes))
++    if level == -2:
++        return "".join(value for value in values if value not in {_PRIMARY, _SECONDARY})
++    if level == -1:
++        return "".join(_SECONDARY if value == _PRIMARY else value for value in values)
++    has_vowel = any(
++        unicodedata.category(value).startswith("L") and value.casefold() in "aeiouəɛɪɔʊɑɒʌɜ"
++        for value in values
++    )
++    if not has_vowel:
++        return phonemes
++    values = [value for value in values if value not in {_PRIMARY, _SECONDARY}]
++    return (_SECONDARY if level == 1 else _PRIMARY) + "".join(values)
+\ No newline at end of file
+diff --git a/piperg2p/types.py b/piperg2p/types.py
+index 0b42f82..0b290d8 100644
+--- a/piperg2p/types.py
++++ b/piperg2p/types.py
+@@ -1,9 +1,11 @@
+-"""Public immutable result types."""
++"""Public immutable result and source-aligned API types."""
+
+ from __future__ import annotations
+
+-from dataclasses import dataclass
+-from typing import Any
++from collections.abc import Mapping, Sequence
++from dataclasses import dataclass, field
++from types import MappingProxyType
++from typing import Any, TypeAlias
+
+ from .diagnostics import FrontendDiagnostics
+
+@@ -28,21 +30,149 @@ class PhonemeSentence:
+         return "".join(self.phonemes)
+
+
++@dataclass
++class TokenSpan:
++    """A source-preserving token using half-open character offsets."""
++
++    text: str
++    char_start: int
++    char_end: int
++    lang: str | None = None
++    extended_text: str | None = None
++    meta: dict[str, Any] = field(default_factory=dict)
++
++    @property
++    def start(self) -> int:
++        return self.char_start
++
++    @property
++    def end(self) -> int:
++        return self.char_end
++
++
++@dataclass(frozen=True)
++class TokenAnnotation:
++    start: int
++    end: int
++    text: str | None = None
++    pos: str | None = None
++    tag: str | None = None
++    lemma: str | None = None
++    language: str | None = None
++
++    @property
++    def char_start(self) -> int:
++        return self.start
++
++    @property
++    def char_end(self) -> int:
++        return self.end
++
++
++TokenAnnotationLike: TypeAlias = TokenAnnotation | Mapping[str, Any]
++
++
+ @dataclass(frozen=True)
++class OverrideSpan:
++    char_start: int
++    char_end: int
++    attrs: Mapping[str, Any] = field(default_factory=dict)
++
++    def __post_init__(self) -> None:
++        if self.char_start < 0 or self.char_end < self.char_start:
++            raise ValueError("override span offsets must be a non-negative half-open range")
++        object.__setattr__(self, "attrs", MappingProxyType(dict(self.attrs)))
++
++    @property
++    def start(self) -> int:
++        return self.char_start
++
++    @property
++    def end(self) -> int:
++        return self.char_end
++
++
++OverrideSpanLike: TypeAlias = OverrideSpan | Mapping[str, Any] | Sequence[Any]
++
++
++@dataclass(frozen=True)
++class LanguageRoute:
++    char_start: int
++    char_end: int
++    language: str
++    requested_language: str | None = None
++    reason: str | None = None
++    evidence: tuple[str, ...] = ()
++
++
++@dataclass(frozen=True)
++class LanguageRoutingConfig:
++    mode: str = "explicit"
++    languages: tuple[str, ...] = ()
++    lexicons: Mapping[str, Sequence[str]] = field(default_factory=dict)
++
++    def __post_init__(self) -> None:
++        if self.mode not in {"explicit", "auto"}:
++            raise ValueError("language routing mode must be 'explicit' or 'auto'")
++        object.__setattr__(self, "languages", tuple(self.languages))
++        object.__setattr__(self, "lexicons", MappingProxyType(dict(self.lexicons)))
++
++
++@dataclass(frozen=True)
++class LexiconEvidence:
++    lexicon_id: str | None = None
++    lexicon_name: str | None = None
++    matched_key: str | None = None
++    source_encoding: str | None = None
++    pronunciation: str | None = None
++    provenance: Any = None
++    rating: Any = None
++
++
++@dataclass
+ class PhonemizeResult:
+-    text: str
+-    sentences: tuple[PhonemeSentence, ...]
++    """High-level result with flattened convenience views and Piper sentence data."""
++
++    clean_text: str = ""
++    tokens: list[TokenSpan] = field(default_factory=list)
++    extended_text: str = ""
++    phonemes: str = ""
++    token_ids: list[int] = field(default_factory=list)
++    warnings: list[str] = field(default_factory=list)
++    language_routes: list[LanguageRoute] = field(default_factory=list)
++    sentences: tuple[PhonemeSentence, ...] = ()
+     diagnostics: FrontendDiagnostics | None = None
+-    warnings: tuple[str, ...] = ()
++    missing_phonemes: tuple[str, ...] = ()
+
+     @property
+-    def phonemes(self) -> tuple[str, ...]:
+-        return tuple(
+-            phone for sentence in self.sentences for phone in sentence.phonemes
+-        )
++    def text(self) -> str:
++        return self.clean_text
+
+     @property
+     def ids(self) -> tuple[int, ...]:
+-        return tuple(
+-            identifier for sentence in self.sentences for identifier in sentence.ids
+-        )
++        return tuple(self.token_ids)
++
++    @property
++    def phoneme_symbols(self) -> tuple[str, ...]:
++        return tuple(self.phonemes)
++
++    def __post_init__(self) -> None:
++        self.tokens = list(self.tokens)
++        self.token_ids = list(self.token_ids)
++        self.warnings = list(self.warnings)
++        self.language_routes = list(self.language_routes)
++        self.sentences = tuple(self.sentences)
++        if not self.phonemes and self.sentences:
++            self.phonemes = "".join(sentence.phoneme_string for sentence in self.sentences)
++        if not self.token_ids and self.sentences:
++            self.token_ids = [identifier for sentence in self.sentences for identifier in sentence.ids]
++        if not self.missing_phonemes and self.sentences:
++            self.missing_phonemes = tuple(
++                missing
++                for sentence in self.sentences
++                for missing in sentence.missing_phonemes
++            )
++        if not self.warnings and self.sentences:
++            self.warnings = [
++                warning for sentence in self.sentences for warning in sentence.warnings
++            ]
+\ No newline at end of file
+diff --git a/tests/test_annotations.py b/tests/test_annotations.py
+new file mode 100644
+index 0000000..2e18635
+--- /dev/null
++++ b/tests/test_annotations.py
+@@ -0,0 +1,20 @@
++from piperg2p import PiperG2P, TokenAnnotation, VoiceConfig
++
++
++def test_annotations_are_source_aligned_and_preserved_in_token_metadata():
++    config = VoiceConfig.from_dict(
++        {
++            "num_symbols": 8,
++            "num_speakers": 1,
++            "audio": {"sample_rate": 22050},
++            "phoneme_type": "text",
++            "phoneme_id_map": {"_": 0, "^": 1, "$": 2, "a": 3, "b": 4, " ": 5, "c": 6},
++        }
++    )
++    g2p = PiperG2P("en-us", config)
++    result = g2p.phonemize_prepared(
++        "ab c",
++        annotations=[TokenAnnotation(0, 2, text="ab", pos="NOUN", tag="NN", lemma="ab")],
++    )
++    assert result.tokens[0].meta == {"pos": "NOUN", "tag": "NN", "lemma": "ab"}
++    g2p.close()
+diff --git a/tests/test_cache.py b/tests/test_cache.py
+new file mode 100644
+index 0000000..76b01c7
+--- /dev/null
++++ b/tests/test_cache.py
+@@ -0,0 +1,43 @@
++from piperg2p import VoiceConfig, cache_info, clear_cache, get_g2p
++from piperg2p.cache import get_or_create, set_maxsize
++
++
++def _config():
++    return VoiceConfig.from_dict(
++        {
++            "num_symbols": 6,
++            "num_speakers": 1,
++            "audio": {"sample_rate": 22050},
++            "phoneme_type": "text",
++            "phoneme_id_map": {"_": 0, "^": 1, "$": 2, "a": 3, "b": 4, " ": 5},
++        }
++    )
++
++
++def test_get_g2p_reuses_identity_and_clear_cache_closes_frontend():
++    clear_cache()
++    first = get_g2p("en-us", config=_config())
++    second = get_g2p("en-us", config=_config())
++    assert first is second
++    assert cache_info().size == 1
++    clear_cache()
++    assert cache_info().size == 0
++
++
++def test_cache_is_bounded_and_closes_evicted_values():
++    class Value:
++        def __init__(self):
++            self.closed = False
++
++        def close(self):
++            self.closed = True
++
++    clear_cache()
++    set_maxsize(1)
++    first = Value()
++    get_or_create("one", lambda: first)
++    get_or_create("two", Value)
++    assert first.closed
++    assert cache_info().size == 1
++    clear_cache()
++    set_maxsize(8)
+diff --git a/tests/test_espeak_backend_selection.py b/tests/test_espeak_backend_selection.py
+new file mode 100644
+index 0000000..b23dacc
+--- /dev/null
++++ b/tests/test_espeak_backend_selection.py
+@@ -0,0 +1,123 @@
++from __future__ import annotations
++
++import types
++
++import pytest
++
++from piperg2p import BackendFallbackWarning, EspeakBackend
++from piperg2p.backends.espeak import backend as backend_module
++
++
++def _patch_providers(monkeypatch, *, native_error: Exception | None = None):
++    calls = {"native": 0, "cli": 0}
++
++    class Native:
++        def __init__(self, **kwargs):
++            calls["native"] += 1
++            if native_error is not None:
++                raise native_error
++            self.diagnostics = types.SimpleNamespace(
++                implementation="native",
++                executable="espeak-ng",
++                library_path="libespeak-ng.so",
++                data_path="espeak-ng-data",
++                discovery_source="test",
++                version="test",
++                exact_clause_api=True,
++                fallback_reason=None,
++                parity="exact",
++                warnings=(),
++            )
++
++        def close(self):
++            pass
++
++    class Cli:
++        def __init__(self, **kwargs):
++            calls["cli"] += 1
++            self.diagnostics = types.SimpleNamespace(
++                implementation="cli",
++                executable="espeak-ng",
++                library_path=None,
++                data_path=None,
++                discovery_source="test",
++                version=None,
++                exact_clause_api=False,
++                fallback_reason=None,
++                parity="best-effort",
++                warnings=(),
++            )
++
++        def close(self):
++            pass
++
++    monkeypatch.setattr(backend_module, "NativeEspeakProvider", Native)
++    monkeypatch.setattr(backend_module, "EspeakCliBackend", Cli)
++    monkeypatch.setattr(
++        backend_module,
++        "discover",
++        lambda **kwargs: types.SimpleNamespace(
++            library="libespeak-ng.so",
++            data="espeak-ng-data",
++            executable="espeak-ng",
++            source="test",
++        ),
++    )
++    return calls
++
++
++def test_auto_keeps_successful_native_provider(monkeypatch):
++    calls = _patch_providers(monkeypatch)
++
++    backend = EspeakBackend(mode="auto")
++
++    assert calls == {"native": 1, "cli": 0}
++    assert backend.diagnostics.implementation == "native"
++    backend.close()
++
++
++def test_auto_falls_back_to_cli_after_native_failure(monkeypatch):
++    calls = _patch_providers(
++        monkeypatch,
++        native_error=backend_module.BackendUnavailableError("library unavailable"),
++    )
++
++    with pytest.warns(BackendFallbackWarning, match="library unavailable"):
++        backend = EspeakBackend(mode="auto")
++
++    assert calls == {"native": 1, "cli": 1}
++    assert backend.diagnostics.implementation == "cli"
++    assert backend.diagnostics.fallback_reason == "BackendUnavailableError: library unavailable"
++    backend.close()
++
++
++def test_native_mode_keeps_successful_native_provider(monkeypatch):
++    calls = _patch_providers(monkeypatch)
++
++    backend = EspeakBackend(mode="native")
++
++    assert calls == {"native": 1, "cli": 0}
++    assert backend.diagnostics.implementation == "native"
++    backend.close()
++
++
++def test_native_mode_raises_after_native_failure(monkeypatch):
++    calls = _patch_providers(
++        monkeypatch,
++        native_error=backend_module.BackendUnavailableError("library unavailable"),
++    )
++
++    with pytest.raises(backend_module.BackendUnavailableError, match="library unavailable"):
++        EspeakBackend(mode="native")
++
++    assert calls == {"native": 1, "cli": 0}
++
++
++def test_cli_mode_never_attempts_native(monkeypatch):
++    calls = _patch_providers(monkeypatch)
++
++    backend = EspeakBackend(mode="cli")
++
++    assert calls == {"native": 0, "cli": 1}
++    assert backend.diagnostics.implementation == "cli"
++    backend.close()
+diff --git a/tests/test_espeak_benchmark.py b/tests/test_espeak_benchmark.py
+new file mode 100644
+index 0000000..e5cf2a4
+--- /dev/null
++++ b/tests/test_espeak_benchmark.py
+@@ -0,0 +1,30 @@
++from __future__ import annotations
++
++import subprocess
++import types
++
++from benchmarks.reference.compare import compare_case, metrics
++from benchmarks.reference.espeak import EspeakReference
++
++
++def test_reference_uses_independent_ipa3_command(monkeypatch):
++    calls = []
++
++    def run(command, **kwargs):
++        calls.append((command, kwargs))
++        return types.SimpleNamespace(returncode=0, stdout="həˈləʊ\n", stderr="")
++
++    monkeypatch.setattr(subprocess, "run", run)
++    reference = EspeakReference("/usr/bin/espeak")
++    result = reference.run("hello", voice="en-us")
++    assert any("--ipa=3" in command for command, _ in calls)
++    assert any("--stdin" in command for command, _ in calls)
++    assert result.raw == "həˈləʊ"
++
++
++def test_comparison_reports_symbol_metrics():
++    values = [compare_case("same", "abc", "abc"), compare_case("different", "abc", "adc")]
++    result = metrics(values)
++    assert result["cases_total"] == 2
++    assert result["cases_passed"] == 1
++    assert result["symbol_substitutions"] == 1
+diff --git a/tests/test_examples.py b/tests/test_examples.py
+new file mode 100644
+index 0000000..9d9bac0
+--- /dev/null
++++ b/tests/test_examples.py
+@@ -0,0 +1,10 @@
++from pathlib import Path
++
++
++def test_examples_do_not_download_resources():
++    root = Path(__file__).parents[1] / "examples"
++    for path in root.glob("*.py"):
++        source = path.read_text(encoding="utf-8")
++        assert "urllib" not in source
++        assert "requests" not in source
++        assert "download" not in source.casefold()
+diff --git a/tests/test_examples_contract.py b/tests/test_examples_contract.py
+new file mode 100644
+index 0000000..467eeac
+--- /dev/null
++++ b/tests/test_examples_contract.py
+@@ -0,0 +1,29 @@
++from pathlib import Path
++
++EXAMPLES = {
++    "cache_and_batch.py",
++    "debug_mode_demo.py",
++    "demo_both_features.py",
++    "espeak_fallback.py",
++    "explicit_language_spans.py",
++    "external_annotations.py",
++    "lexicon_selection.py",
++    "marker_demo.py",
++    "mixed_language_auto.py",
++    "new_api_demo.py",
++    "result_inspection.py",
++    "structured_stress.py",
++}
++
++
++def test_all_sibling_examples_exist_and_compile():
++    root = Path(__file__).parents[1] / "examples"
++    assert {path.name for path in root.glob("*.py") if path.name != "_common.py"} == EXAMPLES
++    for name in EXAMPLES:
++        compile((root / name).read_text(encoding="utf-8"), str(root / name), "exec")
++
++
++def test_examples_use_explicit_config_loader():
++    root = Path(__file__).parents[1] / "examples"
++    for name in EXAMPLES - {"lexicon_selection.py"}:
++        assert "--config" in (root / name).read_text(encoding="utf-8") or "parser(" in (root / name).read_text(encoding="utf-8")
+diff --git a/tests/test_ids_to_phonemes.py b/tests/test_ids_to_phonemes.py
+new file mode 100644
+index 0000000..115922a
+--- /dev/null
++++ b/tests/test_ids_to_phonemes.py
+@@ -0,0 +1,34 @@
++import pytest
++
++from piperg2p import VoiceConfig, encode_phonemes, ids_to_phonemes
++from piperg2p.errors import ConfigError
++
++
++def _config():
++    return VoiceConfig.from_dict(
++        {
++            "num_symbols": 8,
++            "num_speakers": 1,
++            "audio": {"sample_rate": 22050},
++            "phoneme_type": "text",
++            "phoneme_id_map": {
++                "_": 0,
++                "^": 1,
++                "$": 2,
++                "a": 3,
++                "x": [4, 5],
++                "b": 6,
++            },
++        }
++    )
++
++
++def test_ids_to_phonemes_decodes_framing_and_multi_id_symbols():
++    config = _config()
++    encoded = encode_phonemes(["a", "x", "b"], config.phoneme_id_map)
++    assert ids_to_phonemes(encoded.ids, config) == "axb"
++
++
++def test_ids_to_phonemes_rejects_unknown_sequences():
++    with pytest.raises(ConfigError, match="cannot decode"):
++        ids_to_phonemes([1, 0, 99, 2], _config())
+diff --git a/tests/test_language_routing.py b/tests/test_language_routing.py
+new file mode 100644
+index 0000000..4b7f2c2
+--- /dev/null
++++ b/tests/test_language_routing.py
+@@ -0,0 +1,18 @@
++from piperg2p.language_routing import route_language
++from piperg2p.types import LanguageRoutingConfig
++
++
++def test_auto_routing_switches_only_on_unambiguous_evidence():
++    config = LanguageRoutingConfig(
++        mode="auto",
++        languages=("de-de", "en-us"),
++        lexicons={"en-us": {"world": "w"}},
++    )
++    route = route_language("world", "de-de", config)
++    assert route.language == "en-us"
++    assert route.reason == "lexicon-evidence"
++
++
++def test_auto_routing_keeps_default_for_unknown_words():
++    config = LanguageRoutingConfig(mode="auto", languages=("de-de", "en-us"), lexicons={})
++    assert route_language("unknown", "de-de", config).language == "de-de"
+diff --git a/tests/test_markers.py b/tests/test_markers.py
+new file mode 100644
+index 0000000..11ac4ef
+--- /dev/null
++++ b/tests/test_markers.py
+@@ -0,0 +1,21 @@
++from piperg2p import apply_marker_overrides, parse_delimited
++
++
++def test_parse_delimited_preserves_clean_offsets_and_escapes():
++    clean, ranges, warnings = parse_delimited(r"Use @tea@ and \@literal\@")
++    assert clean == "Use tea and @literal@"
++    assert ranges == [(4, 7)]
++    assert warnings == []
++
++
++def test_marker_assignments_support_ordinals_and_sequences():
++    ranges = [(0, 3), (4, 7)]
++    assert [item.attrs["lang"] for item in apply_marker_overrides("one two", ranges, {2: {"lang": "de"}})] == ["de"]
++    assert [item.attrs["ph"] for item in apply_marker_overrides("one two", ranges, [{"ph": "a"}, {"ph": "b"}])] == ["a", "b"]
++
++
++def test_unmatched_marker_is_reported():
++    clean, ranges, warnings = parse_delimited("open @marker")
++    assert clean == "open @marker"
++    assert ranges == []
++    assert "Unmatched opening marker" in warnings[0]
+diff --git a/tests/test_overrides.py b/tests/test_overrides.py
+new file mode 100644
+index 0000000..27eece6
+--- /dev/null
++++ b/tests/test_overrides.py
+@@ -0,0 +1,35 @@
++from piperg2p import OverrideSpan, PiperG2P, VoiceConfig
++
++
++def _g2p():
++    symbols = {"_": 0, "^": 1, "$": 2, " ": 3}
++    symbols.update({character: index + 4 for index, character in enumerate("abcdefghijklmnopqrstuvwxyz" )})
++    return PiperG2P(
++        "en-us",
++        VoiceConfig.from_dict(
++            {
++                "num_symbols": 40,
++                "num_speakers": 1,
++                "audio": {"sample_rate": 22050},
++                "phoneme_type": "text",
++                "phoneme_id_map": symbols,
++            }
++        ),
++    )
++
++
++def test_phoneme_override_is_resolved_directly_and_offsets_are_preserved():
++    g2p = _g2p()
++    result = g2p.phonemize_prepared("abc", overrides=[OverrideSpan(0, 1, {"ph": "z"})])
++    assert result.phonemes == "z"
++    assert result.tokens[0].char_start == 0
++    assert result.tokens[0].meta["override"] == {"ph": "z"}
++    g2p.close()
++
++
++def test_snap_overlap_records_source_offsets():
++    g2p = _g2p()
++    result = g2p.phonemize_prepared("abc", overrides=[OverrideSpan(1, 2, {"ph": "z"})])
++    assert result.phonemes == "z"
++    assert "(1, 2) snapped to (0, 3)" in result.warnings[0]
++    g2p.close()
+diff --git a/tests/test_public_api_consistency.py b/tests/test_public_api_consistency.py
+new file mode 100644
+index 0000000..ffc863b
+--- /dev/null
++++ b/tests/test_public_api_consistency.py
+@@ -0,0 +1,12 @@
++from piperg2p import __all__
++
++SHARED_PUBLIC_API = {
++    "get_g2p", "phonemize", "phonemize_prepared", "phonemes", "phoneme_ids",
++    "tokenize", "cache_info", "clear_cache", "PhonemizeResult", "TokenSpan",
++    "TokenAnnotation", "OverrideSpan", "available_lexicons", "lexicon_info",
++    "parse_delimited", "apply_marker_overrides", "ids_to_phonemes",
++}
++
++
++def test_shared_sibling_api_is_exported():
++    assert SHARED_PUBLIC_API <= set(__all__)
+diff --git a/tests/test_stress.py b/tests/test_stress.py
+new file mode 100644
+index 0000000..67865ab
+--- /dev/null
++++ b/tests/test_stress.py
+@@ -0,0 +1,17 @@
++import pytest
++
++from piperg2p import PiperG2PError
++from piperg2p.stress import apply_stress
++
++
++def test_structured_stress_levels():
++    assert apply_stress("ˈkat", -2) == "kat"
++    assert apply_stress("ˈkat", -1) == "ˌkat"
++    assert apply_stress("kat", 1) == "ˌkat"
++    assert apply_stress("kat", 2) == "ˈkat"
++
++
++def test_invalid_stress_can_be_strict_or_permissive():
++    assert apply_stress("kat", 0) == "kat"
++    with pytest.raises(PiperG2PError):
++        apply_stress("kat", 0, strict=True)
+diff --git a/tests/test_tokenize.py b/tests/test_tokenize.py
+new file mode 100644
+index 0000000..a4ca885
+--- /dev/null
++++ b/tests/test_tokenize.py
+@@ -0,0 +1,13 @@
++from piperg2p import tokenize
++
++
++def test_tokenize_is_source_aligned_and_keeps_internal_word_punctuation():
++    tokens = tokenize("l’été well-being, café\u0301!")
++    assert [(token.text, token.char_start, token.char_end) for token in tokens] == [
++        ("l’été", 0, 5),
++        ("well-being", 6, 16),
++        (",", 16, 17),
++        ("café\u0301", 18, 23),
++        ("!", 23, 24),
++    ]
++    assert [token.text for token in tokenize("hello, world", keep_punct=False)] == ["hello", "world"]

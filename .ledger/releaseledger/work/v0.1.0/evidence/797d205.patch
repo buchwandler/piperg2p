@@ -1,0 +1,239 @@
+ .github/workflows/test.yml       | 22 ++++++++++++++++++++
+ piperg2p/__init__.py             |  8 ++++++-
+ pyproject.toml                   |  9 ++++----
+ tests/test_version.py            | 14 +++++++++++++
+ tools/check_release_artifacts.py | 45 ++++++++++++++++++++++++++++++++++------
+ 5 files changed, 87 insertions(+), 11 deletions(-)
+
+diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml
+index 96d8b1a..cd929dc 100644
+--- a/.github/workflows/test.yml
++++ b/.github/workflows/test.yml
+@@ -14,6 +14,8 @@ jobs:
+         python: ['3.10', '3.11', '3.12', '3.13']
+     steps:
+       - uses: actions/checkout@v4
++        with:
++          fetch-depth: 0
+       - uses: actions/setup-python@v5
+         with:
+           python-version: ${{ matrix.python }}
+@@ -26,6 +28,8 @@ jobs:
+     runs-on: ubuntu-latest
+     steps:
+       - uses: actions/checkout@v4
++        with:
++          fetch-depth: 0
+       - uses: actions/setup-python@v5
+         with:
+           python-version: '3.12'
+@@ -41,6 +45,8 @@ jobs:
+     runs-on: ubuntu-latest
+     steps:
+       - uses: actions/checkout@v4
++        with:
++          fetch-depth: 0
+       - uses: actions/setup-python@v5
+         with:
+           python-version: '3.12'
+@@ -53,6 +59,8 @@ jobs:
+     runs-on: ubuntu-latest
+     steps:
+       - uses: actions/checkout@v4
++        with:
++          fetch-depth: 0
+       - uses: actions/setup-python@v5
+         with:
+           python-version: '3.12'
+@@ -65,6 +73,8 @@ jobs:
+     runs-on: ubuntu-latest
+     steps:
+       - uses: actions/checkout@v4
++        with:
++          fetch-depth: 0
+       - uses: actions/setup-python@v5
+         with:
+           python-version: '3.12'
+@@ -80,6 +90,8 @@ jobs:
+     runs-on: ubuntu-latest
+     steps:
+       - uses: actions/checkout@v4
++        with:
++          fetch-depth: 0
+       - uses: actions/setup-python@v5
+         with:
+           python-version: '3.12'
+@@ -90,6 +102,9 @@ jobs:
+       - run: python -m twine check dist/*
+       - run: python -m venv /tmp/piperg2p-wheel-test
+       - run: /tmp/piperg2p-wheel-test/bin/python -m pip install --no-deps dist/*.whl
++      - run: >-
++          /tmp/piperg2p-wheel-test/bin/python -c
++          "from importlib.metadata import version; import piperg2p; assert piperg2p.__version__ == version('piperg2p'); print(piperg2p.__version__)"
+       - run: /tmp/piperg2p-wheel-test/bin/python -c "from piperg2p import PiperFrontend, VoiceConfig; print(PiperFrontend(VoiceConfig.from_dict({'phoneme_type': 'text', 'num_symbols': 4, 'num_speakers': 1, 'audio': {'sample_rate': 22050}, 'phoneme_id_map': {'_': 0, '^': 1, '$': 2, 'a': 3}})).phonemize('a').ids)"
+
+   publish:
+@@ -100,10 +115,17 @@ jobs:
+       id-token: write
+     steps:
+       - uses: actions/checkout@v4
++        with:
++          fetch-depth: 0
+       - uses: actions/setup-python@v5
+         with:
+           python-version: '3.12'
+       - run: python -m pip install --upgrade pip build twine
+       - run: python -m build
++      - name: Verify release version
++        shell: bash
++        run: |
++          expected="${GITHUB_REF_NAME#v}"
++          python tools/check_release_artifacts.py dist --expected-version "$expected"
+       - run: python -m twine check dist/*
+       - uses: pypa/gh-action-pypi-publish@release/v1
+diff --git a/piperg2p/__init__.py b/piperg2p/__init__.py
+index 5203332..f975f31 100644
+--- a/piperg2p/__init__.py
++++ b/piperg2p/__init__.py
+@@ -1,5 +1,8 @@
+ """Independent Piper G2P/ID frontend."""
+
++from importlib.metadata import PackageNotFoundError
++from importlib.metadata import version as _distribution_version
++
+ from .backends import (
+     EspeakBackend,
+     EspeakCliBackend,
+@@ -49,7 +52,10 @@ from .raw_blocks import (
+ )
+ from .types import PhonemeSentence, PhonemizeResult
+
+-__version__ = "0.2.0"
++try:
++    __version__ = _distribution_version("piperg2p")
++except PackageNotFoundError:
++    __version__ = "0+unknown"
+
+ __all__ = [
+     "BOS",
+diff --git a/pyproject.toml b/pyproject.toml
+index d67cbca..777ccad 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -1,5 +1,9 @@
+ [build-system]
+-requires = ["setuptools>=68", "wheel"]
++requires = [
++  "setuptools>=80",
++  "setuptools-scm[simple]>=9.2",
++  "wheel",
++]
+ build-backend = "setuptools.build_meta"
+
+ [project]
+@@ -52,6 +56,3 @@ markers = [
+
+ [tool.ruff.lint]
+ ignore = ["PYI034", "UP037"]
+-
+-[tool.setuptools.dynamic]
+-version = {attr = "piperg2p.__version__"}
+diff --git a/tests/test_version.py b/tests/test_version.py
+new file mode 100644
+index 0000000..e013bbe
+--- /dev/null
++++ b/tests/test_version.py
+@@ -0,0 +1,14 @@
++from __future__ import annotations
++
++from importlib.metadata import PackageNotFoundError, version
++
++import piperg2p
++
++
++def test_public_version_matches_distribution_metadata() -> None:
++    try:
++        expected = version("piperg2p")
++    except PackageNotFoundError:
++        expected = "0+unknown"
++
++    assert piperg2p.__version__ == expected
+diff --git a/tools/check_release_artifacts.py b/tools/check_release_artifacts.py
+index d259dea..55dcd00 100644
+--- a/tools/check_release_artifacts.py
++++ b/tools/check_release_artifacts.py
+@@ -16,8 +16,26 @@ def _wheel_version(path: Path) -> str:
+         rows = archive.read(metadata).decode("utf-8").splitlines()
+     return next(row.removeprefix("Version: ") for row in rows if row.startswith("Version: "))
+
++def _sdist_version(path: Path) -> str:
++    with tarfile.open(path, "r:gz") as archive:
++        metadata = next(
++            member
++            for member in archive.getmembers()
++            if member.name.endswith("/PKG-INFO")
++        )
++        handle = archive.extractfile(metadata)
++        if handle is None:
++            raise SystemExit(f"sdist PKG-INFO could not be read: {path}")
++        rows = handle.read().decode("utf-8").splitlines()
++
++    return next(
++        row.removeprefix("Version: ")
++        for row in rows
++        if row.startswith("Version: ")
++    )
+
+-def _check_wheel(path: Path) -> None:
++
++def _check_wheel(path: Path) -> str:
+     with zipfile.ZipFile(path) as archive:
+         names = archive.namelist()
+     if not any(name.startswith("piperg2p/") and name.endswith(".py") for name in names):
+@@ -26,28 +44,43 @@ def _check_wheel(path: Path) -> None:
+     included = [name for name in names if name.startswith(forbidden)]
+     if included:
+         raise SystemExit(f"wheel contains excluded files: {included}")
+-    _wheel_version(path)
++    return _wheel_version(path)
+
+
+-def _check_sdist(path: Path) -> None:
++def _check_sdist(path: Path) -> str:
+     with tarfile.open(path, "r:gz") as archive:
+         names = archive.getnames()
+     required = ("pyproject.toml", "README.md", "LICENSE", "piperg2p/__init__.py")
+     if not all(any(name.endswith(value) for name in names) for value in required):
+         raise SystemExit(f"sdist is missing a required project file: {path}")
++    return _sdist_version(path)
+
+
+ def main() -> int:
+     parser = argparse.ArgumentParser(description=__doc__)
+     parser.add_argument("dist", type=Path)
++    parser.add_argument("--expected-version")
+     args = parser.parse_args()
+     wheels = sorted(args.dist.glob("*.whl"))
+     sdists = sorted(args.dist.glob("*.tar.gz"))
+     if len(wheels) != 1 or len(sdists) != 1:
+         raise SystemExit("dist must contain exactly one wheel and one sdist")
+-    _check_wheel(wheels[0])
+-    _check_sdist(sdists[0])
+-    print(f"checked {wheels[0].name} and {sdists[0].name}")
++    wheel_version = _check_wheel(wheels[0])
++    sdist_version = _check_sdist(sdists[0])
++    if wheel_version != sdist_version:
++        raise SystemExit(
++            f"artifact version mismatch: wheel={wheel_version!r}, "
++            f"sdist={sdist_version!r}"
++        )
++    if args.expected_version is not None and wheel_version != args.expected_version:
++        raise SystemExit(
++            f"artifact version {wheel_version!r} does not match "
++            f"expected version {args.expected_version!r}"
++        )
++    print(
++        f"checked {wheels[0].name} and {sdists[0].name} "
++        f"(version {wheel_version})"
++    )
+     return 0

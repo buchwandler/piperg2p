@@ -1,0 +1,28 @@
+ docs/installation.md | 1 -
+ docs/raw-phonemes.md | 1 -
+ 2 files changed, 2 deletions(-)
+
+diff --git a/docs/installation.md b/docs/installation.md
+index 4e47c1f..6c1e562 100644
+--- a/docs/installation.md
++++ b/docs/installation.md
+@@ -13,7 +13,6 @@ or Spokenform and does not own written-to-spoken semantic normalization.
+ Higher-level applications should perform that preparation before calling
+ PiperG2P.
+
+-
+ ## Optional semantic preparation
+
+ Spokenform is a separate package for applications that need written-to-spoken semantic expansion. Install it independently from PiperG2P:
+diff --git a/docs/raw-phonemes.md b/docs/raw-phonemes.md
+index 8e1d734..732dff7 100644
+--- a/docs/raw-phonemes.md
++++ b/docs/raw-phonemes.md
+@@ -2,7 +2,6 @@
+
+ In eSpeak mode, `[[ ... ]]` blocks are parsed before normal conversion. Their contents are inserted as phoneme characters and are not normalized or sent through eSpeak. Adjacent normal text is composed into the active sentence so a normal sentence immediately following a raw block joins that active group.
+
+-
+ ## Semantic preparation and raw blocks
+
+ PiperG2P owns raw blocks such as `[[ tɛst ]]`. Spokenform must not reinterpret text inside those blocks. Discover Piper raw blocks before semantic preparation and pass their source ranges to Spokenform as protected spans:

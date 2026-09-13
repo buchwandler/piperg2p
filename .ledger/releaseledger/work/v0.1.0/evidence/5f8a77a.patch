@@ -1,0 +1,2467 @@
+ .codecrate.toml                                 |  24 +++
+ .github/workflows/test.yml                      |  23 +++
+ .gitignore                                      |   1 +
+ .ledger/ledger.toml                             |  24 +++
+ .ledger/releaseledger/.ledger-project.toml      |   6 +
+ .ledger/releaseledger/config.toml               |  56 ++++++
+ .ledger/releaseledger/data/.ledger-project.toml |   6 +
+ .ledger/taskledger/.ledger-project.toml         |   6 +
+ .ledger/taskledger/config.toml                  |   7 +
+ README.md                                       |  45 ++++-
+ benchmarks/__init__.py                          |   0
+ benchmarks/benchmark_reference.py               |  20 ++
+ benchmarks/data/core.json                       |  14 ++
+ docs/README.md                                  |   3 +
+ docs/api/backends.md                            |   3 +
+ docs/api/config.md                              |   3 +
+ docs/api/core.md                                |   5 +
+ docs/api/diagnostics.md                         |   3 +
+ docs/compatibility.md                           |  13 ++
+ docs/contributing.md                            |  10 +
+ docs/encoding.md                                |  11 ++
+ docs/espeak.md                                  |   9 +
+ docs/index.md                                   |  13 ++
+ docs/installation.md                            |  11 ++
+ docs/phoneme-types.md                           |  14 ++
+ docs/provenance.md                              |  15 ++
+ docs/quickstart.md                              |  15 ++
+ docs/raw-phonemes.md                            |   5 +
+ docs/reference-benchmark.md                     |   9 +
+ docs/voice-config.md                            |  14 ++
+ piperg2p/__init__.py                            |  89 +++++++++
+ piperg2p/backends/__init__.py                   |   7 +
+ piperg2p/backends/base.py                       |  14 ++
+ piperg2p/backends/espeak/__init__.py            |  19 ++
+ piperg2p/backends/espeak/backend.py             | 103 +++++++++++
+ piperg2p/backends/espeak/base.py                |   9 +
+ piperg2p/backends/espeak/clauses.py             |  79 ++++++++
+ piperg2p/backends/espeak/cli.py                 |  64 +++++++
+ piperg2p/backends/espeak/discovery.py           |  79 ++++++++
+ piperg2p/backends/espeak/manager.py             |   5 +
+ piperg2p/backends/espeak/native.py              | 177 ++++++++++++++++++
+ piperg2p/backends/text.py                       |  22 +++
+ piperg2p/codec.py                               | 103 +++++++++++
+ piperg2p/config.py                              | 236 ++++++++++++++++++++++++
+ piperg2p/diagnostics.py                         |  28 +++
+ piperg2p/errors.py                              |  55 ++++++
+ piperg2p/frontend.py                            |  95 ++++++++++
+ piperg2p/raw_blocks.py                          |  78 ++++++++
+ piperg2p/registry.py                            |  43 +++++
+ piperg2p/types.py                               |  44 +++++
+ pyproject.toml                                  |  52 ++++++
+ tests/test_clause_backend.py                    |  86 +++++++++
+ tests/test_codec.py                             |  23 +++
+ tests/test_codec_contracts.py                   |  50 +++++
+ tests/test_config.py                            |  60 ++++++
+ tests/test_independence.py                      |   8 +
+ tests/test_raw_frontend.py                      |  50 +++++
+ 57 files changed, 2065 insertions(+), 1 deletion(-)
+
+diff --git a/.codecrate.toml b/.codecrate.toml
+new file mode 100644
+index 0000000..ba712b9
+--- /dev/null
++++ b/.codecrate.toml
+@@ -0,0 +1,24 @@
++[codecrate]
++output = "context_piperg2p.md"
++keep_docstrings = true
++dedupe = true
++respect_gitignore = true
++exclude = ["*/.venv/*", "context_piperg2p.*"]
++include = [
++  "**/*.py",
++  "**/*.json",
++  "**/*.toml",
++  "**/*.rst",
++  "**/*.md",
++  "**/*.yaml",
++  "**/*.yml",
++  "**/py.typed",
++  "**/NOTICE",
++  "**/NOTICE.*",
++  "**/MANIFEST.in",
++  "LICENSE*",
++]
++split_max_chars = 2500000
++layout = "full"
++profile = "portable-agent"
++emit_standalone_unpacker = true
+diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml
+new file mode 100644
+index 0000000..26e7a56
+--- /dev/null
++++ b/.github/workflows/test.yml
+@@ -0,0 +1,23 @@
++name: test
++
++on:
++  push:
++  pull_request:
++
++jobs:
++  core:
++    runs-on: ${{ matrix.os }}
++    strategy:
++      fail-fast: false
++      matrix:
++        os: [ubuntu-latest, macos-latest, windows-latest]
++        python: ['3.10', '3.11', '3.12', '3.13']
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with:
++          python-version: ${{ matrix.python }}
++      - run: python -m pip install --upgrade pip
++      - run: python -m pip install -e '.[dev]'
++      - run: pytest -q
++      - run: python -m build
+diff --git a/.gitignore b/.gitignore
+index 83972fa..72c31e4 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -216,3 +216,4 @@ __marimo__/
+
+ # Streamlit
+ .streamlit/secrets.toml
++context_piperg2p*.*
+diff --git a/.ledger/ledger.toml b/.ledger/ledger.toml
+new file mode 100644
+index 0000000..600a34f
+--- /dev/null
++++ b/.ledger/ledger.toml
+@@ -0,0 +1,24 @@
++schema_version = 3
++
++[project]
++uuid = "a4becda2-bf20-4ebf-ae03-69d9792fad7f"
++name = "piperg2p"
++
++[ledgers.taskledger.mounts.data]
++storage = "external"
++root = "../ledger"
++
++[ledgers.taskledger.mounts.runtime]
++storage = "user-data"
++
++[ledgers.taskledger.mounts.logs]
++storage = "user-data"
++
++[ledgers.taskledger.mounts.indexes]
++storage = "cache"
++
++[ledgers.releaseledger.mounts.data]
++storage = "project"
++
++[ledgers.releaseledger.mounts.indexes]
++storage = "cache"
+diff --git a/.ledger/releaseledger/.ledger-project.toml b/.ledger/releaseledger/.ledger-project.toml
+new file mode 100644
+index 0000000..9ce4725
+--- /dev/null
++++ b/.ledger/releaseledger/.ledger-project.toml
+@@ -0,0 +1,6 @@
++schema_version = 1
++layout_version = 3
++project_uuid = "a4becda2-bf20-4ebf-ae03-69d9792fad7f"
++tool = "releaseledger"
++mount = "config"
++storage = "project"
+diff --git a/.ledger/releaseledger/config.toml b/.ledger/releaseledger/config.toml
+new file mode 100644
+index 0000000..1129e1c
+--- /dev/null
++++ b/.ledger/releaseledger/config.toml
+@@ -0,0 +1,56 @@
++config_version = 2
++# Branch-scoped release state. This block is safe to commit.
++ledger_ref = "main"
++ledger_parent_ref = ""
++ledger_branch_guard = "off"
++# Cross-ledger identity. Local record IDs stay unchanged.
++
++[ledger]
++code = "rl"
++# Release defaults.
++
++[release]
++default_changelog = "CHANGELOG.md"
++default_status = "planned"
++allow_dirty_worktree = true
++# Changelog build defaults.
++
++[changelog]
++output = "docs/changelog.md"
++header = ""
++body = """## {% if release.date %}[{{ release.version }}] - {{ release.date }}{% else %}[{{ release.version }}] - Unreleased{% endif %}
++
++{% for group in groups %}
++### {{ group.title }}
++{% for entry in group.entries %}
++- {% if entry.breaking %}**BREAKING:** {% endif %}{{ entry.summary }}
++{% endfor %}
++
++{% endfor %}
++"""
++footer = "<!-- generated by releaseledger -->"
++trim = true
++render_always = false
++postprocessors = []
++standard = ""
++group_mode = "extended"
++link_references = false
++repository_url = ""
++tag_prefix = "v"
++compare_url_template = ""
++release_url_template = ""
++preamble = ""
++semver = false
++unreleased = true
++# Git-first release evidence.
++
++[git]
++enabled = true
++default_base = "previous_release_tag"
++default_head = "HEAD"
++previous_tag_patterns = ["v{version}", "{version}"]
++include_merges = "nontrivial"
++require_clean_worktree = false
++max_commits = 500
++max_diff_chars_per_commit = 12000
++candidate_status = "draft"
+diff --git a/.ledger/releaseledger/data/.ledger-project.toml b/.ledger/releaseledger/data/.ledger-project.toml
+new file mode 100644
+index 0000000..36278a9
+--- /dev/null
++++ b/.ledger/releaseledger/data/.ledger-project.toml
+@@ -0,0 +1,6 @@
++schema_version = 1
++layout_version = 3
++project_uuid = "a4becda2-bf20-4ebf-ae03-69d9792fad7f"
++tool = "releaseledger"
++mount = "data"
++storage = "project"
+diff --git a/.ledger/taskledger/.ledger-project.toml b/.ledger/taskledger/.ledger-project.toml
+new file mode 100644
+index 0000000..cb01235
+--- /dev/null
++++ b/.ledger/taskledger/.ledger-project.toml
+@@ -0,0 +1,6 @@
++schema_version = 1
++layout_version = 3
++project_uuid = "a4becda2-bf20-4ebf-ae03-69d9792fad7f"
++tool = "taskledger"
++mount = "config"
++storage = "project"
+diff --git a/.ledger/taskledger/config.toml b/.ledger/taskledger/config.toml
+new file mode 100644
+index 0000000..6f94549
+--- /dev/null
++++ b/.ledger/taskledger/config.toml
+@@ -0,0 +1,7 @@
++# Project-local Taskledger configuration.
++# Storage topology belongs to Ledgercore; branch state belongs to data/state.toml.
++config_version = 3
++
++[ledger]
++code = 'tl'
++name = 'taskledger'
+diff --git a/README.md b/README.md
+index a389b16..e067ddb 100644
+--- a/README.md
++++ b/README.md
+@@ -1 +1,44 @@
+-# piperg2p
+\ No newline at end of file
++# piperg2p
++
++`piperg2p` is an independent, voice-config-driven Piper-compatible frontend. It produces phoneme sequences and model IDs from Piper ONNX voice configurations. It does not synthesize audio, require Piper, or include Piper source or model data.
++
++## Delivered scope
++
++- `text` phoneme voices with no eSpeak dependency.
++- `espeak` voices through a native eSpeak NG public API binding or an explicit CLI fallback.
++- Unicode NFD normalization and voice-specific ID maps.
++- Sentence-grouped results and raw `[[ ... ]]` phoneme blocks in eSpeak mode.
++- Immutable diagnostics, typed configuration, errors, and missing-phoneme reporting.
++
++The native clause API is labeled `exact` only when it is available. The CLI path is always labeled `best-effort`. Pinyin, Japanese, Thai, Hebrew, and Arabic adapters are planned but are not part of this release.
++
++## Install
++
++```bash
++pip install .
++```
++
++Install eSpeak NG separately for eSpeak voices. Text voices need no optional runtime package.
++
++## Usage
++
++```python
++from piperg2p import PiperFrontend
++
++frontend = PiperFrontend.from_config("voice.onnx.json")
++result = frontend.phonemize("Hello, world.")
++for sentence in result.sentences:
++    print(sentence.phoneme_string)
++    print(sentence.ids)
++    print(sentence.missing_phonemes)
++```
++
++The configured `phoneme_id_map` is authoritative. `result.ids` is a convenience flattening of sentence IDs. Model inference should normally consume each `sentence.ids` separately.
++
++## Compatibility
++
++Compatibility is measured against pinned reference profiles, not a moving upstream branch. See [docs/compatibility.md](docs/compatibility.md), [docs/espeak.md](docs/espeak.md), and [docs/provenance.md](docs/provenance.md).
++
++## Independence
++
++The runtime package has no Piper dependency, does not import Piper, and does not bundle Piper GPL assets. Reference corpus metadata is development evidence only.
+diff --git a/benchmarks/__init__.py b/benchmarks/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/benchmarks/benchmark_reference.py b/benchmarks/benchmark_reference.py
+new file mode 100644
+index 0000000..79c87a1
+--- /dev/null
++++ b/benchmarks/benchmark_reference.py
+@@ -0,0 +1,20 @@
++"""Inspect the pinned Phase 1 corpus without importing Piper at runtime."""
++
++from __future__ import annotations
++
++import argparse
++import json
++from pathlib import Path
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--corpus", type=Path, default=Path(__file__).parent / "data" / "core.json")
++    args = parser.parse_args()
++    corpus = json.loads(args.corpus.read_text(encoding="utf-8"))
++    print(json.dumps({"profile": corpus["profile"], "cases": len(corpus["cases"])}, indent=2))
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/benchmarks/data/core.json b/benchmarks/data/core.json
+new file mode 100644
+index 0000000..b390125
+--- /dev/null
++++ b/benchmarks/data/core.json
+@@ -0,0 +1,14 @@
++{
++  "profile": {
++    "name": "piperg2p-phase1-core",
++    "reference": "OHF-Voice/piper1-gpl",
++    "commit": "404aefedbd74baa0bd43e451bc407a2b3aace0f5",
++    "target": "piper-python-main",
++    "status": "metadata-only until reference subprocess is provisioned"
++  },
++  "cases": [
++    {"id": "text-nfd", "phoneme_type": "text", "text": "Cafe\u0301", "policy": "exact"},
++    {"id": "espeak-punctuation", "phoneme_type": "espeak", "text": "Hello, world.", "policy": "diagnostic"},
++    {"id": "espeak-residual", "phoneme_type": "espeak", "text": "No terminal punctuation", "policy": "diagnostic"}
++  ]
++}
+diff --git a/docs/README.md b/docs/README.md
+new file mode 100644
+index 0000000..1008e23
+--- /dev/null
++++ b/docs/README.md
+@@ -0,0 +1,3 @@
++# Documentation
++
++Start with [index.md](index.md).
+\ No newline at end of file
+diff --git a/docs/api/backends.md b/docs/api/backends.md
+new file mode 100644
+index 0000000..0b14aca
+--- /dev/null
++++ b/docs/api/backends.md
+@@ -0,0 +1,3 @@
++# Backend API
++
++`TextBackend` handles codepoint phonemes. `EspeakBackend` selects native or CLI implementations. `NativeEspeakProvider` exposes clause results for testable composition. `PhonemeBackend` is the protocol used for custom backend injection.
+diff --git a/docs/api/config.md b/docs/api/config.md
+new file mode 100644
+index 0000000..17117cf
+--- /dev/null
++++ b/docs/api/config.md
+@@ -0,0 +1,3 @@
++# Configuration API
++
++Use `VoiceConfig.from_dict`, `VoiceConfig.from_json`, and `VoiceConfig.to_dict`. Strict parsing is the default. Use `strict=False` only for legacy configurations that require inferred defaults.
+diff --git a/docs/api/core.md b/docs/api/core.md
+new file mode 100644
+index 0000000..b317201
+--- /dev/null
++++ b/docs/api/core.md
+@@ -0,0 +1,5 @@
++# Core API
++
++Public entry points include `PiperFrontend`, `VoiceConfig`, `PhonemeType`, `encode_phonemes`, `MissingPhonemePolicy`, `PhonemizeResult`, `PhonemeSentence`, and `EncodeResult`.
++
++Frontend results are immutable tuples. `PhonemizeResult.sentences` is the model-oriented view. The flattened `.phonemes` and `.ids` properties are convenience views.
+diff --git a/docs/api/diagnostics.md b/docs/api/diagnostics.md
+new file mode 100644
+index 0000000..2b9eef5
+--- /dev/null
++++ b/docs/api/diagnostics.md
+@@ -0,0 +1,3 @@
++# Diagnostics API
++
++`BackendDiagnostics` and `FrontendDiagnostics` are frozen dataclasses. Backend diagnostics include implementation, discovered paths, version, clause API availability, fallback reason, warnings, and parity.
+diff --git a/docs/compatibility.md b/docs/compatibility.md
+new file mode 100644
+index 0000000..26e4bd2
+--- /dev/null
++++ b/docs/compatibility.md
+@@ -0,0 +1,13 @@
++# Compatibility policy
++
++The primary target is the Python Piper voice behavior at pinned reference commits. `libpiper` behavior is a separate future benchmark profile and is not silently mixed into the runtime.
++
++| Feature | Core | Compatibility label |
++| --- | --- | --- |
++| Text frontend | yes | exact for tested Python profile |
++| Native eSpeak clause API | system library | exact when the public terminator API is present |
++| eSpeak CLI | executable required | best-effort |
++| Raw blocks | yes, eSpeak only | reference-tested foundation |
++| Pinyin, Japanese, Thai, Hebrew, Arabic | no provider in Phase 1 | unsupported or deferred |
++
++The pinned Phase 1 corpus metadata is in `benchmarks/data/core.json`. It is not a golden output and cannot silently refresh. Exactness claims require reference output and dependency metadata.
+diff --git a/docs/contributing.md b/docs/contributing.md
+new file mode 100644
+index 0000000..7886f43
+--- /dev/null
++++ b/docs/contributing.md
+@@ -0,0 +1,10 @@
++# Contributing
++
++Run the core checks before submitting changes:
++
++```bash
++pytest -q
++python -m build
++```
++
++Keep backend transformations independently testable with fake providers. Mark live eSpeak tests with `espeak` and `integration`. Do not add Piper as a runtime dependency or copy upstream implementation and data. Update provenance when a compatibility requirement changes.
+diff --git a/docs/encoding.md b/docs/encoding.md
+new file mode 100644
+index 0000000..de00c8b
+--- /dev/null
++++ b/docs/encoding.md
+@@ -0,0 +1,11 @@
++# Encoding
++
++Ordinary encoding uses the configured map and preserves this framing:
++
++```text
++BOS, PAD, (phoneme IDs, PAD)*, EOS
++```
++
++Map values may contain multiple IDs. Missing phonemes are always recorded in `EncodeResult` and sentence results. `MissingPhonemePolicy.ERROR` raises `MissingPhonemeError`, `WARN` emits `MissingPhonemeWarning` and skips the symbol, and `IGNORE` skips it silently.
++
++A separate `PinyinEncoder` exists for future provider integration. It does not change ordinary `text` or `espeak` framing.
+diff --git a/docs/espeak.md b/docs/espeak.md
+new file mode 100644
+index 0000000..cbdf620
+--- /dev/null
++++ b/docs/espeak.md
+@@ -0,0 +1,9 @@
++# eSpeak backends
++
++`EspeakBackend` supports `auto`, `native`, and `cli` modes. Auto mode attempts the native shared library first and falls back to the CLI with a `BackendFallbackWarning`. Native mode fails clearly when the library or exact clause API is unavailable. CLI mode is explicitly `best-effort`.
++
++Native conversion uses the public eSpeak NG functions `espeak_Initialize`, `espeak_SetVoiceByName`, and `espeak_TextToPhonemesWithTerminator`. The process-wide native manager holds an `RLock` across voice selection and complete clause conversion because eSpeak has mutable global state.
++
++`BackendDiagnostics` reports the requested mode, implementation, executable, library, data path, version, exact clause support, fallback reason, and parity label. eSpeak data discovery never imports Piper.
++
++Clause transformations are pure Python around a clause provider. They remove language-switch markers, retain comma, colon, and semicolon punctuation with a following space, preserve sentence punctuation, apply NFD after assembly, merge configured vowel clusters longest-first, and emit residual final text.
+diff --git a/docs/index.md b/docs/index.md
+new file mode 100644
+index 0000000..ef9ecdc
+--- /dev/null
++++ b/docs/index.md
+@@ -0,0 +1,13 @@
++# piperg2p documentation
++
++- [Installation](installation.md)
++- [Quick start](quickstart.md)
++- [Voice configuration](voice-config.md)
++- [Encoding](encoding.md)
++- [eSpeak backends](espeak.md)
++- [Raw phonemes](raw-phonemes.md)
++- [Phoneme types](phoneme-types.md)
++- [Compatibility policy](compatibility.md)
++- [Provenance](provenance.md)
++
++The project is an independent phoneme and ID frontend. It does not synthesize audio.
+diff --git a/docs/installation.md b/docs/installation.md
+new file mode 100644
+index 0000000..2400523
+--- /dev/null
++++ b/docs/installation.md
+@@ -0,0 +1,11 @@
++# Installation
++
++The core package supports Python 3.10 and newer and has no mandatory non-standard runtime dependency.
++
++```bash
++pip install .
++```
++
++The `dev` extra provides pytest, coverage, ruff, mypy, and build tooling. eSpeak NG is a system dependency for eSpeak voices. Its executable, shared library, and data directory can be selected with constructor arguments or `PIPERG2P_ESPEAK_EXECUTABLE`, `PIPERG2P_ESPEAK_LIBRARY`, and `PIPERG2P_ESPEAK_DATA`.
++
++No frontend downloads models or makes network requests during phonemization.
+diff --git a/docs/phoneme-types.md b/docs/phoneme-types.md
+new file mode 100644
+index 0000000..b4c4e8f
+--- /dev/null
++++ b/docs/phoneme-types.md
+@@ -0,0 +1,14 @@
++# Phoneme types
++
++The configuration enum recognizes the six current Piper phoneme type names:
++
++| Type | Phase 1 status |
++| --- | --- |
++| `text` | implemented in core |
++| `espeak` | native and CLI backends implemented |
++| `pinyin` | encoder scaffold only, provider deferred |
++| `japanese` | deferred |
++| `thai` | deferred |
++| `hebrew` | deferred |
++
++Selecting a deferred type without a custom backend raises an actionable `UnsupportedPhonemeTypeError`. Optional language dependencies are not imported by the core package.
+diff --git a/docs/provenance.md b/docs/provenance.md
+new file mode 100644
+index 0000000..ce95f85
+--- /dev/null
++++ b/docs/provenance.md
+@@ -0,0 +1,15 @@
++# Provenance and clean-room boundary
++
++This project is implemented independently under Apache-2.0. The compatibility requirements were derived from public Piper configuration and behavior observations, the eSpeak NG public header/API, and the local `01_todo.md` engineering guide.
++
++| Requirement | Public or black-box basis | Independent decision |
++| --- | --- | --- |
++| Voice-specific ID maps | Piper voice configuration shape | Keep the loaded map authoritative and validate IDs locally. |
++| Ordinary BOS/PAD/EOS framing | Observed frontend behavior | Implement a small codec strategy with no universal map. |
++| NFD normalization | Existing project behavior and compatibility requirement | Use Python `unicodedata.normalize` at the frontend boundary. |
++| Clause terminators | eSpeak NG public `speak_lib.h` | Bind the exported terminator function with ctypes and transform results in pure Python. |
++| Native global-state locking | eSpeak public API global behavior | Use one process-wide manager and reentrant lock. |
++| Raw blocks | Observed eSpeak/Piper behavior | Use a small state-machine parser and independent composition helper. |
++| CLI fallback | Existing project behavior | Keep subprocess execution isolated, UTF-8, no shell, and label parity best-effort. |
++
++No Piper source, comments, tests, lookup tables, model files, bundled resources, or runtime import is used. The pinned upstream identity in the benchmark metadata is historical evidence, not code to port.
+diff --git a/docs/quickstart.md b/docs/quickstart.md
+new file mode 100644
+index 0000000..a515698
+--- /dev/null
++++ b/docs/quickstart.md
+@@ -0,0 +1,15 @@
++# Quick start
++
++```python
++from piperg2p import PiperFrontend
++
++with PiperFrontend.from_config("voice.onnx.json") as frontend:
++    result = frontend.phonemize("Hello world.")
++    for sentence in result.sentences:
++        print(sentence.phoneme_string)
++        print(sentence.ids)
++```
++
++For a text voice, `phonemize` decomposes input with Unicode NFD and treats each resulting codepoint as a model phoneme. For an eSpeak voice, it selects the configured eSpeak voice and returns one result per detected sentence.
++
++Use `frontend.diagnostics` or `result.diagnostics` to inspect backend implementation and parity.
+diff --git a/docs/raw-phonemes.md b/docs/raw-phonemes.md
+new file mode 100644
+index 0000000..4e2029a
+--- /dev/null
++++ b/docs/raw-phonemes.md
+@@ -0,0 +1,5 @@
++# Raw phonemes
++
++In eSpeak mode, `[[ ... ]]` blocks are parsed before normal conversion. Their contents are inserted as phoneme characters and are not normalized or sent through eSpeak. Adjacent normal text is composed into the active sentence so a normal sentence immediately following a raw block joins that active group.
++
++Opening and closing delimiters without a matching pair are deterministic ordinary text. Empty blocks do not add symbols. Raw symbols still pass through the configured voice map and therefore appear in missing-phoneme diagnostics when unmapped.
+diff --git a/docs/reference-benchmark.md b/docs/reference-benchmark.md
+new file mode 100644
+index 0000000..10d6260
+--- /dev/null
++++ b/docs/reference-benchmark.md
+@@ -0,0 +1,9 @@
++# Reference benchmark
++
++`benchmarks/data/core.json` records a small pinned Phase 1 corpus identity and its comparison policies. Run the metadata inspection with:
++
++```bash
++python benchmarks/benchmark_reference.py
++```
++
++Reference Piper execution belongs in a separate development environment or subprocess. It is not a runtime dependency. Golden outputs must be refreshed explicitly, with a pinned commit, dependency versions, voice configuration hash, and human review. The current corpus intentionally reports metadata only until that isolated provider is provisioned.
+diff --git a/docs/voice-config.md b/docs/voice-config.md
+new file mode 100644
+index 0000000..6b4ec04
+--- /dev/null
++++ b/docs/voice-config.md
+@@ -0,0 +1,14 @@
++# Voice configuration
++
++`VoiceConfig.from_json` reads a Piper `.onnx.json` file. Strict parsing is the default and requires `num_symbols`, `num_speakers`, `audio.sample_rate`, and a non-empty `phoneme_id_map`.
++
++```python
++from piperg2p import VoiceConfig
++
++config = VoiceConfig.from_json("voice.onnx.json")
++config = VoiceConfig.from_dict(config.to_dict())
++```
++
++`phoneme_type` is a string-compatible `PhonemeType` enum with values `text`, `espeak`, `pinyin`, `hebrew`, `japanese`, and `thai`. This Phase 1 release implements `text` and `espeak`. `strict=False` is available for legacy configs and emits a compatibility warning when values are inferred.
++
++ID values are normalized to immutable integer tuples. IDs must be non-negative and below `num_symbols`. Voice maps are never replaced by a universal vocabulary. Vowel clusters must have at least two elements and their merged token must be in the map.
+diff --git a/piperg2p/__init__.py b/piperg2p/__init__.py
+new file mode 100644
+index 0000000..5e5d5fd
+--- /dev/null
++++ b/piperg2p/__init__.py
+@@ -0,0 +1,89 @@
++"""Independent Piper G2P/ID frontend."""
++
++from .backends import (
++    EspeakBackend,
++    EspeakCliBackend,
++    NativeEspeakProvider,
++    PhonemeBackend,
++    TextBackend,
++)
++from .codec import (
++    BOS,
++    EOS,
++    PAD,
++    EncodeResult,
++    EncoderStrategy,
++    MissingPhonemePolicy,
++    PinyinEncoder,
++    encode_phonemes,
++    encode_pinyin,
++)
++from .config import PhonemeType, PiperConfig, VoiceConfig
++from .diagnostics import BackendDiagnostics, FrontendDiagnostics
++from .errors import (
++    BackendError,
++    BackendFallbackWarning,
++    BackendUnavailableError,
++    CompatibilityWarning,
++    ConfigError,
++    MissingPhonemeError,
++    MissingPhonemeWarning,
++    PhonemizationError,
++    PiperG2PError,
++    PiperG2PWarning,
++    ResourceError,
++    ResourceUnavailableError,
++    UnsupportedPhonemeTypeError,
++)
++from .frontend import PiperFrontend
++from .raw_blocks import (
++    RawPhonemeSegment,
++    TextSegment,
++    compose_raw_segments,
++    parse_raw_blocks,
++)
++from .types import PhonemeSentence, PhonemizeResult
++
++__version__ = "0.2.0"
++
++__all__ = [
++    "BOS",
++    "EOS",
++    "PAD",
++    "BackendDiagnostics",
++    "BackendError",
++    "BackendFallbackWarning",
++    "BackendUnavailableError",
++    "CompatibilityWarning",
++    "ConfigError",
++    "EncodeResult",
++    "EncoderStrategy",
++    "EspeakBackend",
++    "EspeakCliBackend",
++    "FrontendDiagnostics",
++    "MissingPhonemeError",
++    "MissingPhonemePolicy",
++    "MissingPhonemeWarning",
++    "NativeEspeakProvider",
++    "PhonemeBackend",
++    "PhonemeSentence",
++    "PhonemeType",
++    "PhonemizationError",
++    "PhonemizeResult",
++    "PinyinEncoder",
++    "PiperConfig",
++    "PiperFrontend",
++    "PiperG2PError",
++    "PiperG2PWarning",
++    "RawPhonemeSegment",
++    "ResourceError",
++    "ResourceUnavailableError",
++    "TextBackend",
++    "TextSegment",
++    "UnsupportedPhonemeTypeError",
++    "VoiceConfig",
++    "compose_raw_segments",
++    "encode_phonemes",
++    "encode_pinyin",
++    "parse_raw_blocks",
++]
+diff --git a/piperg2p/backends/__init__.py b/piperg2p/backends/__init__.py
+new file mode 100644
+index 0000000..4297bfe
+--- /dev/null
++++ b/piperg2p/backends/__init__.py
+@@ -0,0 +1,7 @@
++"""Backend implementations and compatibility exports."""
++
++from .base import PhonemeBackend
++from .espeak import EspeakBackend, EspeakCliBackend, NativeEspeakProvider
++from .text import TextBackend
++
++__all__ = ["EspeakBackend", "EspeakCliBackend", "NativeEspeakProvider", "PhonemeBackend", "TextBackend"]
+diff --git a/piperg2p/backends/base.py b/piperg2p/backends/base.py
+new file mode 100644
+index 0000000..d21b894
+--- /dev/null
++++ b/piperg2p/backends/base.py
+@@ -0,0 +1,14 @@
++from __future__ import annotations
++
++from typing import Protocol
++
++from ..diagnostics import BackendDiagnostics
++
++
++class PhonemeBackend(Protocol):
++    @property
++    def diagnostics(self) -> BackendDiagnostics: ...
++
++    def phonemize(self, text: str, *, voice: str) -> list[list[str]]: ...
++
++    def close(self) -> None: ...
+diff --git a/piperg2p/backends/espeak/__init__.py b/piperg2p/backends/espeak/__init__.py
+new file mode 100644
+index 0000000..0e1de22
+--- /dev/null
++++ b/piperg2p/backends/espeak/__init__.py
+@@ -0,0 +1,19 @@
++from .backend import EspeakBackend
++from .clauses import Clause, compose_clauses, merge_vowel_clusters
++from .cli import EspeakCliBackend
++from .discovery import EspeakPaths, discover, find_data, find_executable, find_library
++from .native import NativeEspeakProvider
++
++__all__ = [
++    "Clause",
++    "EspeakBackend",
++    "EspeakCliBackend",
++    "EspeakPaths",
++    "NativeEspeakProvider",
++    "compose_clauses",
++    "discover",
++    "find_data",
++    "find_executable",
++    "find_library",
++    "merge_vowel_clusters",
++]
+diff --git a/piperg2p/backends/espeak/backend.py b/piperg2p/backends/espeak/backend.py
+new file mode 100644
+index 0000000..94e14ba
+--- /dev/null
++++ b/piperg2p/backends/espeak/backend.py
+@@ -0,0 +1,103 @@
++from __future__ import annotations
++
++import warnings
++from dataclasses import dataclass
++
++from ...diagnostics import BackendDiagnostics
++from ...errors import BackendFallbackWarning, BackendUnavailableError
++from .clauses import compose_clauses
++from .cli import EspeakCliBackend
++from .discovery import discover
++from .native import NativeEspeakProvider
++
++
++@dataclass
++class EspeakBackend:
++    mode: str = "auto"
++    executable: str | None = None
++    library: str | None = None
++    data: str | None = None
++    vowel_clusters: frozenset[tuple[str, ...]] = frozenset()
++    strict_native: bool = False
++    timeout: float | None = None
++
++    def __post_init__(self) -> None:
++        if self.mode not in {"auto", "native", "cli"}:
++            raise ValueError("eSpeak mode must be 'auto', 'native', or 'cli'")
++        self._provider: NativeEspeakProvider | EspeakCliBackend
++        fallback_reason: str | None = None
++        if self.mode in {"auto", "native"}:
++            try:
++                paths = discover(
++                    executable=self.executable,
++                    library=self.library,
++                    data=self.data,
++                    require_executable=self.mode == "auto" or self.executable is not None,
++                )
++                self._provider = NativeEspeakProvider(
++                    library=paths.library,
++                    data=paths.data,
++                    executable=paths.executable,
++                    strict=self.strict_native or self.mode == "native",
++                )
++            except (BackendUnavailableError, OSError) as exc:
++                if self.mode == "native":
++                    raise
++                fallback_reason = f"{type(exc).__name__}: {exc}"
++        if self.mode == "cli" or fallback_reason is not None:
++            self._provider = EspeakCliBackend(
++                executable=self.executable,
++                data_path=self.data,
++                vowel_clusters=self.vowel_clusters,
++                timeout=self.timeout,
++            )
++        provider_diagnostics = self._provider.diagnostics
++        if fallback_reason:
++            warnings.warn(
++                f"native eSpeak unavailable, using CLI: {fallback_reason}",
++                BackendFallbackWarning,
++                stacklevel=2,
++            )
++            self._diagnostics = BackendDiagnostics(
++                requested_mode=self.mode,
++                implementation=provider_diagnostics.implementation,
++                executable=provider_diagnostics.executable,
++                library_path=provider_diagnostics.library_path,
++                data_path=provider_diagnostics.data_path,
++                version=provider_diagnostics.version,
++                exact_clause_api=provider_diagnostics.exact_clause_api,
++                fallback_reason=fallback_reason,
++                parity="best-effort",
++                warnings=(fallback_reason,),
++            )
++        else:
++            self._diagnostics = BackendDiagnostics(
++                requested_mode=self.mode,
++                implementation=provider_diagnostics.implementation,
++                executable=provider_diagnostics.executable,
++                library_path=provider_diagnostics.library_path,
++                data_path=provider_diagnostics.data_path,
++                version=provider_diagnostics.version,
++                exact_clause_api=provider_diagnostics.exact_clause_api,
++                fallback_reason=provider_diagnostics.fallback_reason,
++                parity=provider_diagnostics.parity,
++                warnings=provider_diagnostics.warnings,
++            )
++
++    @property
++    def diagnostics(self) -> BackendDiagnostics:
++        return self._diagnostics
++
++    def phonemize(self, text: str, *, voice: str) -> list[list[str]]:
++        if isinstance(self._provider, NativeEspeakProvider):
++            return compose_clauses(self._provider.clauses(text, voice), self.vowel_clusters)
++        return self._provider.phonemize(text, voice=voice)
++
++    def close(self) -> None:
++        self._provider.close()
++
++    def __enter__(self) -> "EspeakBackend":
++        return self
++
++    def __exit__(self, *_: object) -> None:
++        self.close()
+diff --git a/piperg2p/backends/espeak/base.py b/piperg2p/backends/espeak/base.py
+new file mode 100644
+index 0000000..ee9d2c8
+--- /dev/null
++++ b/piperg2p/backends/espeak/base.py
+@@ -0,0 +1,9 @@
++from __future__ import annotations
++
++from typing import Protocol
++
++from .clauses import Clause
++
++
++class ClauseProvider(Protocol):
++    def clauses(self, text: str, voice: str) -> list[Clause]: ...
+diff --git a/piperg2p/backends/espeak/clauses.py b/piperg2p/backends/espeak/clauses.py
+new file mode 100644
+index 0000000..224f03c
+--- /dev/null
++++ b/piperg2p/backends/espeak/clauses.py
+@@ -0,0 +1,79 @@
++from __future__ import annotations
++
++import re
++import unicodedata
++from collections.abc import Iterable
++from dataclasses import dataclass
++
++_LANG_SWITCH_RE = re.compile(r"\([^)]+\)")
++
++
++@dataclass(frozen=True)
++class Clause:
++    phonemes: str
++    terminator: str | None = None
++    sentence_end: bool = False
++
++
++def merge_vowel_clusters(phones: list[str], clusters: frozenset[tuple[str, ...]]) -> list[str]:
++    if not clusters:
++        return phones
++    max_length = max((len(cluster) for cluster in clusters), default=0)
++    result: list[str] = []
++    position = 0
++    while position < len(phones):
++        match: tuple[str, ...] | None = None
++        for size in range(min(max_length, len(phones) - position), 1, -1):
++            candidate = tuple(phones[position : position + size])
++            if candidate in clusters:
++                match = candidate
++                break
++        if match is None:
++            result.append(phones[position])
++            position += 1
++        else:
++            result.append("".join(match))
++            position += len(match)
++    return result
++
++
++def _clean(phonemes: str) -> str:
++    return _LANG_SWITCH_RE.sub("", phonemes).replace("\u200d", "")
++
++
++def compose_clauses(
++    clauses: Iterable[Clause], clusters: frozenset[tuple[str, ...]] = frozenset()
++) -> list[list[str]]:
++    sentences: list[list[str]] = []
++    current: list[str] = []
++    for clause in clauses:
++        payload = unicodedata.normalize("NFD", _clean(clause.phonemes))
++        if payload:
++            current.extend(payload)
++        if clause.terminator:
++            current.append(clause.terminator)
++            if clause.terminator in ",:;":
++                current.append(" ")
++        if clause.sentence_end and current:
++            sentences.append(merge_vowel_clusters(current, clusters))
++            current = []
++    if current:
++        sentences.append(merge_vowel_clusters(current, clusters))
++    return sentences
++
++
++def split_cli_clauses(text: str) -> list[tuple[str, str | None, bool]]:
++    """Split CLI input into an explicitly best-effort clause stream."""
++    clauses: list[tuple[str, str | None, bool]] = []
++    position = 0
++    for match in re.finditer(r"(.*?)([.!?]|[,;:]|$)", text, re.DOTALL):
++        if match.start() != position:
++            continue
++        body, terminator = match.groups()
++        if not body and not terminator:
++            break
++        clauses.append((body, terminator, bool(terminator and terminator in ".!?")))
++        position = match.end()
++        if position >= len(text):
++            break
++    return clauses
+diff --git a/piperg2p/backends/espeak/cli.py b/piperg2p/backends/espeak/cli.py
+new file mode 100644
+index 0000000..56eb4ee
+--- /dev/null
++++ b/piperg2p/backends/espeak/cli.py
+@@ -0,0 +1,64 @@
++from __future__ import annotations
++
++import subprocess
++from dataclasses import dataclass
++
++from ...diagnostics import BackendDiagnostics
++from ...errors import PhonemizationError
++from .clauses import Clause, compose_clauses, split_cli_clauses
++from .discovery import discover
++
++
++@dataclass
++class EspeakCliBackend:
++    executable: str | None = None
++    vowel_clusters: frozenset[tuple[str, ...]] = frozenset()
++    timeout: float | None = None
++    data_path: str | None = None
++
++    def __post_init__(self) -> None:
++        paths = discover(executable=self.executable, data=self.data_path)
++        self.executable = paths.executable
++        self.data_path = paths.data
++        self._diagnostics = BackendDiagnostics(
++            requested_mode="cli",
++            implementation="cli",
++            executable=self.executable,
++            data_path=self.data_path,
++            parity="best-effort",
++        )
++
++    @property
++    def diagnostics(self) -> BackendDiagnostics:
++        return self._diagnostics
++
++    def _ipa(self, text: str, voice: str) -> str:
++        if not text.strip():
++            return ""
++        try:
++            process = subprocess.run(
++                [self.executable or "", "-q", "--ipa=3", "-v", voice, "--stdin"],
++                input=text,
++                encoding="utf-8",
++                errors="strict",
++                capture_output=True,
++                check=False,
++                timeout=self.timeout,
++            )
++        except (OSError, subprocess.SubprocessError) as exc:
++            raise PhonemizationError(f"eSpeak CLI invocation failed: {exc}") from exc
++        if process.returncode:
++            raise PhonemizationError(f"eSpeak failed ({process.returncode}): {process.stderr.strip()}")
++        return process.stdout.strip("\r\n ")
++
++    def phonemize(self, text: str, *, voice: str) -> list[list[str]]:
++        if not text:
++            return []
++        clauses = [
++            Clause(self._ipa(body, voice), terminator, sentence_end)
++            for body, terminator, sentence_end in split_cli_clauses(text)
++        ]
++        return compose_clauses(clauses, self.vowel_clusters)
++
++    def close(self) -> None:
++        return None
+diff --git a/piperg2p/backends/espeak/discovery.py b/piperg2p/backends/espeak/discovery.py
+new file mode 100644
+index 0000000..083d472
+--- /dev/null
++++ b/piperg2p/backends/espeak/discovery.py
+@@ -0,0 +1,79 @@
++from __future__ import annotations
++
++import ctypes.util
++import os
++import shutil
++from dataclasses import dataclass
++from pathlib import Path
++
++from ...errors import BackendUnavailableError
++
++
++@dataclass(frozen=True)
++class EspeakPaths:
++    executable: str | None = None
++    library: str | None = None
++    data: str | None = None
++
++
++def find_executable(explicit: str | None = None) -> str:
++    candidate = explicit or os.environ.get("PIPERG2P_ESPEAK_EXECUTABLE")
++    if candidate:
++        if Path(candidate).is_file() or shutil.which(candidate):
++            return str(Path(candidate)) if Path(candidate).is_file() else str(shutil.which(candidate))
++        raise BackendUnavailableError(f"configured eSpeak executable does not exist: {candidate}")
++    found = shutil.which("espeak-ng") or shutil.which("espeak")
++    if not found:
++        raise BackendUnavailableError("eSpeak was not found; install eSpeak NG or configure PIPERG2P_ESPEAK_EXECUTABLE")
++    return found
++
++
++def find_library(explicit: str | None = None, executable: str | None = None) -> str | None:
++    candidate = explicit or os.environ.get("PIPERG2P_ESPEAK_LIBRARY")
++    if candidate:
++        if Path(candidate).is_file() or shutil.which(candidate):
++            return candidate
++        raise BackendUnavailableError(f"configured eSpeak library does not exist: {candidate}")
++    for name in ("espeak-ng", "espeak"):
++        found = ctypes.util.find_library(name)
++        if found:
++            return found
++    if executable:
++        root = Path(executable).resolve().parent.parent
++        candidates = list((root / "lib").glob("libespeak*.so*")) + list((root / "bin").glob("libespeak*.dll"))
++        if candidates:
++            return str(candidates[0])
++    return None
++
++
++def find_data(explicit: str | None = None, executable: str | None = None, library: str | None = None) -> str | None:
++    candidate = explicit or os.environ.get("PIPERG2P_ESPEAK_DATA")
++    if candidate:
++        path = Path(candidate)
++        if path.is_dir():
++            return str(path)
++        raise BackendUnavailableError(f"configured eSpeak data directory does not exist: {candidate}")
++    candidates: list[Path] = []
++    for value in (executable, library):
++        if value and "/" in value:
++            path = Path(value).resolve()
++            roots = [path.parent, path.parent.parent]
++            candidates.extend(root / "share" / "espeak-ng-data" for root in roots)
++            candidates.extend(root / "espeak-ng-data" for root in roots)
++    for path in candidates:
++        if path.is_dir():
++            return str(path)
++    return None
++
++
++def discover(
++    *,
++    executable: str | None = None,
++    library: str | None = None,
++    data: str | None = None,
++    require_executable: bool = True,
++) -> EspeakPaths:
++    exe = find_executable(executable) if require_executable or executable else None
++    lib = find_library(library, exe)
++    data_path = find_data(data, exe, lib)
++    return EspeakPaths(exe, lib, data_path)
+diff --git a/piperg2p/backends/espeak/manager.py b/piperg2p/backends/espeak/manager.py
+new file mode 100644
+index 0000000..24112df
+--- /dev/null
++++ b/piperg2p/backends/espeak/manager.py
+@@ -0,0 +1,5 @@
++"""Native eSpeak manager implementation lives in native.py."""
++
++from .native import _MANAGER
++
++__all__ = ["_MANAGER"]
+diff --git a/piperg2p/backends/espeak/native.py b/piperg2p/backends/espeak/native.py
+new file mode 100644
+index 0000000..bf68537
+--- /dev/null
++++ b/piperg2p/backends/espeak/native.py
+@@ -0,0 +1,177 @@
++from __future__ import annotations
++
++import ctypes
++import ctypes.util
++import threading
++from pathlib import Path
++
++from ...diagnostics import BackendDiagnostics
++from ...errors import BackendUnavailableError, PhonemizationError
++from .clauses import Clause
++
++_AUDIO_OUTPUT_SYNCHRONOUS = 3
++_CHARS_UTF8 = 1
++_IPA = 2
++_TERMINATORS = {
++    0x41000: (",", False),
++    0x42000: (":", False),
++    0x43000: (";", False),
++    0x48000: (".", True),
++    0x82000: ("?", True),
++    0x83000: ("!", True),
++}
++
++
++class _NativeManager:
++    def __init__(self) -> None:
++        self.lock = threading.RLock()
++        self.library: ctypes.CDLL | None = None
++        self.path: str | None = None
++        self.data_path: str | None = None
++        self.version: str | None = None
++        self.users = 0
++
++    def acquire(self, library_path: str | None, data_path: str | None) -> ctypes.CDLL:
++        with self.lock:
++            if library_path is None:
++                library_path = ctypes.util.find_library("espeak-ng") or ctypes.util.find_library("espeak")
++            if library_path is None:
++                raise BackendUnavailableError("eSpeak shared library was not found; configure PIPERG2P_ESPEAK_LIBRARY")
++            if self.library is not None and self.path != library_path:
++                raise BackendUnavailableError("a different eSpeak library is already active in this process")
++            if self.library is None:
++                try:
++                    self.library = ctypes.CDLL(library_path)
++                except OSError as exc:
++                    raise BackendUnavailableError(f"could not load eSpeak library {library_path!r}: {exc}") from exc
++                self.path = library_path
++                self._configure_functions(self.library)
++                init_path = None
++                if data_path:
++                    path = Path(data_path)
++                    init_path = str(path.parent if path.name == "espeak-ng-data" else path)
++                result = self.library.espeak_Initialize(
++                    _AUDIO_OUTPUT_SYNCHRONOUS,
++                    0,
++                    init_path.encode() if init_path else None,
++                    0,
++                )
++                if result < 0:
++                    self.library = None
++                    self.path = None
++                    raise BackendUnavailableError(f"eSpeak initialization failed with code {result}")
++                if hasattr(self.library, "espeak_Info"):
++                    reported = ctypes.c_char_p()
++                    self.library.espeak_Info.argtypes = [ctypes.POINTER(ctypes.c_char_p)]
++                    self.library.espeak_Info.restype = ctypes.c_char_p
++                    version = self.library.espeak_Info(ctypes.byref(reported))
++                    self.data_path = reported.value.decode() if reported.value else data_path
++                    self.version = version.decode() if version else None
++                else:
++                    self.data_path = data_path
++            self.users += 1
++            return self.library
++
++    @staticmethod
++    def _configure_functions(library: ctypes.CDLL) -> None:
++        library.espeak_Initialize.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
++        library.espeak_Initialize.restype = ctypes.c_int
++        library.espeak_SetVoiceByName.argtypes = [ctypes.c_char_p]
++        library.espeak_SetVoiceByName.restype = ctypes.c_int
++        library.espeak_Terminate.argtypes = []
++        library.espeak_Terminate.restype = ctypes.c_int
++        library.espeak_TextToPhonemes.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_int, ctypes.c_int]
++        library.espeak_TextToPhonemes.restype = ctypes.c_char_p
++        if hasattr(library, "espeak_TextToPhonemesWithTerminator"):
++            function = library.espeak_TextToPhonemesWithTerminator
++            function.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_int)]
++            function.restype = ctypes.c_char_p
++
++    def release(self) -> None:
++        with self.lock:
++            self.users = max(0, self.users - 1)
++            if self.users == 0 and self.library is not None:
++                self.library.espeak_Terminate()
++                self.library = None
++                self.path = None
++                self.data_path = None
++                self.version = None
++
++
++_MANAGER = _NativeManager()
++
++
++class NativeEspeakProvider:
++    """Independent ctypes binding around eSpeak NG's public phoneme API."""
++
++    def __init__(
++        self,
++        *,
++        library: str | None = None,
++        data: str | None = None,
++        executable: str | None = None,
++        strict: bool = False,
++    ) -> None:
++        self.library_path = library
++        self.data_path = data
++        self.executable = executable
++        self._closed = False
++        self._library = _MANAGER.acquire(library, data)
++        self.exact_clause_api = hasattr(self._library, "espeak_TextToPhonemesWithTerminator")
++        if strict and not self.exact_clause_api:
++            self.close()
++            raise BackendUnavailableError("loaded eSpeak library lacks espeak_TextToPhonemesWithTerminator")
++        self.version = _MANAGER.version
++        self.data_path = _MANAGER.data_path or data
++
++    @property
++    def diagnostics(self) -> BackendDiagnostics:
++        return BackendDiagnostics(
++            requested_mode="native",
++            implementation="native",
++            executable=self.executable,
++            library_path=_MANAGER.path or self.library_path,
++            data_path=self.data_path,
++            version=self.version,
++            exact_clause_api=self.exact_clause_api,
++            parity="exact" if self.exact_clause_api else "best-effort",
++        )
++
++    def clauses(self, text: str, voice: str) -> list[Clause]:
++        if self._closed:
++            raise PhonemizationError("native eSpeak provider is closed")
++        if not text:
++            return []
++        with _MANAGER.lock:
++            result = self._library.espeak_SetVoiceByName(voice.encode("utf-8"))
++            if result != 0:
++                raise PhonemizationError(f"eSpeak voice {voice!r} was not found (code {result})")
++            buffer = ctypes.create_string_buffer(text.encode("utf-8") + b"\0")
++            pointer = ctypes.c_void_p(ctypes.addressof(buffer))
++            clauses: list[Clause] = []
++            while pointer.value:
++                previous = pointer.value
++                terminator = ctypes.c_int(0)
++                if self.exact_clause_api:
++                    value = self._library.espeak_TextToPhonemesWithTerminator(
++                        ctypes.byref(pointer), _CHARS_UTF8, _IPA, ctypes.byref(terminator)
++                    )
++                else:
++                    value = self._library.espeak_TextToPhonemes(ctypes.byref(pointer), _CHARS_UTF8, _IPA)
++                if pointer.value == previous:
++                    raise PhonemizationError("eSpeak clause API made no progress")
++                payload = value.decode("utf-8") if value else ""
++                token, sentence_end = _TERMINATORS.get(terminator.value & 0xFFF000, (None, False))
++                clauses.append(Clause(payload, token, sentence_end))
++            return clauses
++
++    def close(self) -> None:
++        if not self._closed:
++            self._closed = True
++            _MANAGER.release()
++
++    def __enter__(self) -> "NativeEspeakProvider":
++        return self
++
++    def __exit__(self, *_: object) -> None:
++        self.close()
+diff --git a/piperg2p/backends/text.py b/piperg2p/backends/text.py
+new file mode 100644
+index 0000000..60b6bcf
+--- /dev/null
++++ b/piperg2p/backends/text.py
+@@ -0,0 +1,22 @@
++from __future__ import annotations
++
++import unicodedata
++from dataclasses import dataclass
++
++from ..diagnostics import BackendDiagnostics
++
++
++@dataclass
++class TextBackend:
++    """Backend for voices whose phonemes are input codepoints."""
++
++    @property
++    def diagnostics(self) -> BackendDiagnostics:
++        return BackendDiagnostics(implementation="text", parity="exact")
++
++    def phonemize(self, text: str, *, voice: str = "") -> list[list[str]]:
++        del voice
++        return [list(unicodedata.normalize("NFD", text))] if text else []
++
++    def close(self) -> None:
++        return None
+diff --git a/piperg2p/codec.py b/piperg2p/codec.py
+new file mode 100644
+index 0000000..28c2d81
+--- /dev/null
++++ b/piperg2p/codec.py
+@@ -0,0 +1,103 @@
++from __future__ import annotations
++
++import warnings
++from collections.abc import Mapping, Sequence
++from enum import Enum
++from typing import Protocol
++
++from .errors import ConfigError, MissingPhonemeError, MissingPhonemeWarning
++from .types import EncodeResult
++
++PAD = "_"
++BOS = "^"
++EOS = "$"
++
++
++class MissingPhonemePolicy(str, Enum):
++    ERROR = "error"
++    WARN = "warn"
++    IGNORE = "ignore"
++
++
++class EncoderStrategy(Protocol):
++    def encode(
++        self,
++        phonemes: Sequence[str],
++        id_map: Mapping[str, Sequence[int]],
++        missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN,
++    ) -> EncodeResult: ...
++
++
++def _control_ids(id_map: Mapping[str, Sequence[int]]) -> tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...]]:
++    try:
++        return tuple(id_map[BOS]), tuple(id_map[PAD]), tuple(id_map[EOS])
++    except KeyError as exc:
++        raise ConfigError(f"phoneme_id_map is missing required control symbol {exc.args[0]!r}") from exc
++
++
++def _missing(phoneme: str, policy: MissingPhonemePolicy, items: list[str], messages: list[str]) -> None:
++    items.append(phoneme)
++    message = f"phoneme {phoneme!r} is not present in voice phoneme_id_map"
++    if policy is MissingPhonemePolicy.ERROR:
++        raise MissingPhonemeError(message)
++    if policy is MissingPhonemePolicy.WARN:
++        warnings.warn(message, MissingPhonemeWarning, stacklevel=3)
++        messages.append(message)
++
++
++def encode_phonemes(
++    phonemes: Sequence[str],
++    id_map: Mapping[str, Sequence[int]],
++    *,
++    missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN,
++) -> EncodeResult:
++    """Encode ordinary Piper IDs: ``BOS + PAD + (phoneme + PAD)* + EOS``."""
++    policy = MissingPhonemePolicy(missing)
++    bos_ids, pad_ids, eos_ids = _control_ids(id_map)
++    out: list[int] = [int(value) for value in bos_ids + pad_ids]
++    missing_items: list[str] = []
++    messages: list[str] = []
++    for phoneme in phonemes:
++        ids = id_map.get(phoneme)
++        if ids is None:
++            _missing(phoneme, policy, missing_items, messages)
++            continue
++        out.extend(int(value) for value in ids)
++        out.extend(int(value) for value in pad_ids)
++    out.extend(int(value) for value in eos_ids)
++    return EncodeResult(tuple(out), tuple(missing_items), tuple(messages))
++
++
++class OrdinaryEncoder:
++    def encode(self, phonemes: Sequence[str], id_map: Mapping[str, Sequence[int]], missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN) -> EncodeResult:
++        return encode_phonemes(phonemes, id_map, missing=missing)
++
++
++class PinyinEncoder:
++    """Group-aware encoder for flat Pinyin symbols."""
++
++    def encode(self, phonemes: Sequence[str], id_map: Mapping[str, Sequence[int]], missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN) -> EncodeResult:
++        policy = MissingPhonemePolicy(missing)
++        bos_ids, pad_ids, eos_ids = _control_ids(id_map)
++        out: list[int] = [int(value) for value in bos_ids]
++        missing_items: list[str] = []
++        messages: list[str] = []
++        for phoneme in phonemes:
++            ids = id_map.get(phoneme)
++            if ids is None:
++                _missing(phoneme, policy, missing_items, messages)
++                continue
++            out.extend(int(value) for value in ids)
++            if phoneme in "12345" or phoneme.isspace() or phoneme in ",.!?;:，。！？；：":
++                out.extend(int(value) for value in pad_ids)
++        out.extend(int(value) for value in eos_ids)
++        return EncodeResult(tuple(out), tuple(missing_items), tuple(messages))
++
++
++def encode_pinyin(
++    phonemes: Sequence[str],
++    id_map: Mapping[str, Sequence[int]],
++    *,
++    missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN,
++) -> EncodeResult:
++    return PinyinEncoder().encode(phonemes, id_map, missing)
+diff --git a/piperg2p/config.py b/piperg2p/config.py
+new file mode 100644
+index 0000000..165207c
+--- /dev/null
++++ b/piperg2p/config.py
+@@ -0,0 +1,236 @@
++from __future__ import annotations
++
++import json
++import warnings
++from collections.abc import Mapping, Sequence
++from dataclasses import dataclass, field
++from enum import Enum
++from pathlib import Path
++from types import MappingProxyType
++from typing import Any
++
++from .errors import CompatibilityWarning, ConfigError, UnsupportedPhonemeTypeError
++
++
++class PhonemeType(str, Enum):
++    ESPEAK = "espeak"
++    TEXT = "text"
++    PINYIN = "pinyin"
++    HEBREW = "hebrew"
++    JAPANESE = "japanese"
++    THAI = "thai"
++
++
++def _integer(value: Any, name: str) -> int:
++    if isinstance(value, bool) or not isinstance(value, int):
++        raise ConfigError(f"{name} must be an integer")
++    return value
++
++
++@dataclass(frozen=True)
++class VoiceConfig:
++    """Validated subset of a Piper ``.onnx.json`` voice configuration."""
++
++    num_symbols: int
++    num_speakers: int
++    sample_rate: int
++    phoneme_id_map: Mapping[str, tuple[int, ...]]
++    phoneme_type: PhonemeType = PhonemeType.ESPEAK
++    espeak_voice: str = "en-us"
++    speaker_id_map: Mapping[str, int] = field(default_factory=dict)
++    default_speaker_id: int = 0
++    noise_scale: float = 0.667
++    length_scale: float = 1.0
++    noise_w: float = 0.8
++    hop_length: int = 256
++    vowel_clusters: frozenset[tuple[str, ...]] = field(default_factory=frozenset)
++    piper_version: str | None = None
++    extra: Mapping[str, Any] = field(default_factory=dict)
++
++    def __post_init__(self) -> None:
++        try:
++            phoneme_type = PhonemeType(self.phoneme_type)
++        except (TypeError, ValueError) as exc:
++            raise UnsupportedPhonemeTypeError(
++                f"unsupported phoneme_type {self.phoneme_type!r}; expected one of "
++                f"{', '.join(item.value for item in PhonemeType)}"
++            ) from exc
++        object.__setattr__(self, "phoneme_type", phoneme_type)
++        object.__setattr__(
++            self,
++            "phoneme_id_map",
++            MappingProxyType({str(key): tuple(value) for key, value in self.phoneme_id_map.items()}),
++        )
++        object.__setattr__(
++            self,
++            "speaker_id_map",
++            MappingProxyType({str(key): int(value) for key, value in self.speaker_id_map.items()}),
++        )
++        object.__setattr__(
++            self,
++            "vowel_clusters",
++            frozenset(tuple(str(value) for value in cluster) for cluster in self.vowel_clusters),
++        )
++        object.__setattr__(self, "extra", MappingProxyType(dict(self.extra)))
++
++    @classmethod
++    def from_dict(cls, raw: Mapping[str, Any], *, strict: bool = True) -> VoiceConfig:
++        if not isinstance(raw, Mapping):
++            raise ConfigError("voice config must be a mapping")
++        audio = raw.get("audio")
++        inference = raw.get("inference")
++        espeak = raw.get("espeak")
++        if not isinstance(audio, Mapping):
++            if strict:
++                raise ConfigError("voice config is missing audio.sample_rate")
++            audio = {}
++        if not isinstance(inference, Mapping):
++            if strict and "inference" in raw:
++                raise ConfigError("inference must be a mapping")
++            inference = {}
++        if not isinstance(espeak, Mapping):
++            if strict and "espeak" in raw:
++                raise ConfigError("espeak must be a mapping")
++            espeak = {}
++
++        id_map_raw = raw.get("phoneme_id_map")
++        if not isinstance(id_map_raw, Mapping) or not id_map_raw:
++            raise ConfigError("voice config is missing phoneme_id_map")
++        id_map: dict[str, tuple[int, ...]] = {}
++        for phoneme, values in id_map_raw.items():
++            if isinstance(values, int) and not isinstance(values, bool):
++                values = (values,)
++            elif isinstance(values, Sequence) and not isinstance(values, (str, bytes, bytearray)):
++                values = tuple(values)
++            else:
++                raise ConfigError(f"invalid id list for phoneme {phoneme!r}")
++            if not values:
++                raise ConfigError(f"id list for phoneme {phoneme!r} is empty")
++            ids = tuple(_integer(value, f"id list for phoneme {phoneme!r}") for value in values)
++            if any(value < 0 for value in ids):
++                raise ConfigError(f"id list for phoneme {phoneme!r} contains a negative ID")
++            id_map[str(phoneme)] = ids
++
++        if "num_symbols" not in raw:
++            if strict:
++                raise ConfigError("voice config is missing num_symbols")
++            num_symbols = max(max(values) for values in id_map.values()) + 1
++            warnings.warn("inferred num_symbols from phoneme_id_map", CompatibilityWarning, stacklevel=2)
++        else:
++            num_symbols = _integer(raw["num_symbols"], "num_symbols")
++        if num_symbols <= 0:
++            raise ConfigError("num_symbols must be positive")
++
++        if "num_speakers" not in raw:
++            if strict:
++                raise ConfigError("voice config is missing num_speakers")
++            num_speakers = 1
++        else:
++            num_speakers = _integer(raw["num_speakers"], "num_speakers")
++        if num_speakers <= 0:
++            raise ConfigError("num_speakers must be positive")
++
++        if "sample_rate" not in audio:
++            if strict:
++                raise ConfigError("voice config is missing audio.sample_rate")
++            sample_rate = 22050
++        else:
++            sample_rate = _integer(audio["sample_rate"], "audio.sample_rate")
++        if sample_rate <= 0:
++            raise ConfigError("audio.sample_rate must be positive")
++        if max(value for values in id_map.values() for value in values) >= num_symbols:
++            raise ConfigError("phoneme_id_map contains an ID outside num_symbols")
++
++        speaker_map_raw = raw.get("speaker_id_map") or {}
++        if not isinstance(speaker_map_raw, Mapping):
++            raise ConfigError("speaker_id_map must be a mapping")
++        speaker_map = {
++            str(key): _integer(value, f"speaker_id_map[{key!r}]")
++            for key, value in speaker_map_raw.items()
++        }
++        default_speaker = _integer(raw.get("default_speaker_id", 0), "default_speaker_id")
++        if default_speaker < 0 or default_speaker >= num_speakers:
++            raise ConfigError("default_speaker_id is outside num_speakers")
++        if any(value < 0 or value >= num_speakers for value in speaker_map.values()):
++            raise ConfigError("speaker_id_map contains an ID outside num_speakers")
++
++        clusters_raw = raw.get("vowel_clusters") or ()
++        if not isinstance(clusters_raw, Sequence) or isinstance(clusters_raw, (str, bytes)):
++            raise ConfigError("vowel_clusters must be a sequence of sequences")
++        clusters: set[tuple[str, ...]] = set()
++        for cluster in clusters_raw:
++            if isinstance(cluster, str):
++                values = tuple(cluster)
++            elif isinstance(cluster, Sequence):
++                values = tuple(str(value) for value in cluster)
++            else:
++                raise ConfigError("each vowel cluster must be a sequence")
++            if len(values) < 2:
++                raise ConfigError("vowel clusters must contain at least two elements")
++            if "".join(values) not in id_map:
++                raise ConfigError(f"merged vowel cluster {''.join(values)!r} is absent from phoneme_id_map")
++            clusters.add(values)
++
++        known = {
++            "num_symbols", "num_speakers", "audio", "inference", "espeak", "phoneme_id_map",
++            "phoneme_type", "speaker_id_map", "default_speaker_id", "hop_length",
++            "vowel_clusters", "piper_version",
++        }
++        extra = {key: value for key, value in raw.items() if key not in known}
++        return cls(
++            num_symbols=num_symbols,
++            num_speakers=num_speakers,
++            sample_rate=sample_rate,
++            phoneme_id_map=id_map,
++            phoneme_type=raw.get("phoneme_type", PhonemeType.ESPEAK),
++            espeak_voice=str(espeak.get("voice", "en-us")),
++            speaker_id_map=speaker_map,
++            default_speaker_id=default_speaker,
++            noise_scale=float(inference.get("noise_scale", 0.667)),
++            length_scale=float(inference.get("length_scale", 1.0)),
++            noise_w=float(inference.get("noise_w", 0.8)),
++            hop_length=_integer(raw.get("hop_length", 256), "hop_length"),
++            vowel_clusters=frozenset(clusters),
++            piper_version=(str(raw["piper_version"]) if raw.get("piper_version") is not None else None),
++            extra=extra,
++        )
++
++    @classmethod
++    def from_json(cls, path: str | Path, *, strict: bool = True) -> VoiceConfig:
++        with Path(path).open("r", encoding="utf-8") as handle:
++            return cls.from_dict(json.load(handle), strict=strict)
++
++    @property
++    def noise_w_scale(self) -> float:
++        return self.noise_w
++
++    def to_dict(self) -> dict[str, Any]:
++        result = dict(self.extra)
++        result.update(
++            {
++                "num_symbols": self.num_symbols,
++                "num_speakers": self.num_speakers,
++                "audio": {"sample_rate": self.sample_rate},
++                "inference": {
++                    "noise_scale": self.noise_scale,
++                    "length_scale": self.length_scale,
++                    "noise_w": self.noise_w,
++                },
++                "espeak": {"voice": self.espeak_voice},
++                "phoneme_id_map": {
++                    key: list(values) if len(values) != 1 else values[0]
++                    for key, values in self.phoneme_id_map.items()
++                },
++                "phoneme_type": self.phoneme_type.value,
++                "speaker_id_map": dict(self.speaker_id_map),
++                "default_speaker_id": self.default_speaker_id,
++                "hop_length": self.hop_length,
++                "vowel_clusters": [list(cluster) for cluster in sorted(self.vowel_clusters)],
++            }
++        )
++        if self.piper_version is not None:
++            result["piper_version"] = self.piper_version
++        return result
++
++
++PiperConfig = VoiceConfig
+diff --git a/piperg2p/diagnostics.py b/piperg2p/diagnostics.py
+new file mode 100644
+index 0000000..1893afb
+--- /dev/null
++++ b/piperg2p/diagnostics.py
+@@ -0,0 +1,28 @@
++"""Immutable backend and frontend diagnostics."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++
++
++@dataclass(frozen=True)
++class BackendDiagnostics:
++    requested_mode: str = "text"
++    implementation: str = "text"
++    executable: str | None = None
++    library_path: str | None = None
++    data_path: str | None = None
++    version: str | None = None
++    exact_clause_api: bool = False
++    fallback_reason: str | None = None
++    parity: str = "exact"
++    warnings: tuple[str, ...] = ()
++
++
++@dataclass(frozen=True)
++class FrontendDiagnostics:
++    phoneme_type: str
++    backend: str
++    compatibility_profile: str = "piper-python"
++    warnings: tuple[str, ...] = ()
++    backend_diagnostics: BackendDiagnostics | None = None
+diff --git a/piperg2p/errors.py b/piperg2p/errors.py
+new file mode 100644
+index 0000000..c17a3df
+--- /dev/null
++++ b/piperg2p/errors.py
+@@ -0,0 +1,55 @@
++"""Public exceptions and warnings raised by :mod:`piperg2p`."""
++
++from __future__ import annotations
++
++
++class PiperG2PError(Exception):
++    """Base class for piperg2p failures."""
++
++
++class ConfigError(PiperG2PError, ValueError):
++    """The voice configuration is invalid."""
++
++
++class UnsupportedPhonemeTypeError(ConfigError):
++    """The configuration names a frontend that is not supported."""
++
++
++class BackendError(PiperG2PError):
++    """Base class for backend failures."""
++
++
++class BackendUnavailableError(BackendError):
++    """A requested backend cannot be initialized."""
++
++
++class PhonemizationError(BackendError):
++    """A backend failed while converting text."""
++
++
++class ResourceError(PiperG2PError):
++    """A language or backend resource is invalid."""
++
++
++class ResourceUnavailableError(ResourceError):
++    """An optional resource is not installed or usable."""
++
++
++class MissingPhonemeError(PiperG2PError, KeyError):
++    """A required phoneme is absent from the selected voice map."""
++
++
++class PiperG2PWarning(UserWarning):
++    """Base class for piperg2p warnings."""
++
++
++class MissingPhonemeWarning(PiperG2PWarning):
++    """A phoneme was omitted because it is absent from the voice map."""
++
++
++class BackendFallbackWarning(PiperG2PWarning):
++    """A backend fell back to a less compatible implementation."""
++
++
++class CompatibilityWarning(PiperG2PWarning):
++    """A compatibility-relevant lenient behavior was used."""
+diff --git a/piperg2p/frontend.py b/piperg2p/frontend.py
+new file mode 100644
+index 0000000..dc91bda
+--- /dev/null
++++ b/piperg2p/frontend.py
+@@ -0,0 +1,95 @@
++from __future__ import annotations
++
++from collections.abc import Iterable
++from pathlib import Path
++from typing import Any
++
++from .backends import PhonemeBackend
++from .codec import EncodeResult, MissingPhonemePolicy
++from .config import PhonemeType, VoiceConfig
++from .diagnostics import FrontendDiagnostics
++from .errors import UnsupportedPhonemeTypeError
++from .raw_blocks import compose_raw_segments, parse_raw_blocks
++from .registry import spec_for
++from .types import PhonemeSentence, PhonemizeResult
++
++
++class PiperFrontend:
++    """Voice-config-driven Piper frontend independent from Piper's runtime."""
++
++    def __init__(
++        self,
++        config: VoiceConfig,
++        *,
++        backend: PhonemeBackend | None = None,
++        missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN,
++    ) -> None:
++        self.config = config
++        self.missing = MissingPhonemePolicy(missing)
++        self._spec = spec_for(config)
++        self.backend = backend if backend is not None else self._make_backend()
++
++    def _make_backend(self) -> PhonemeBackend:
++        if self.config.phoneme_type in {PhonemeType.TEXT, PhonemeType.ESPEAK}:
++            return self._spec.backend_factory(self.config)
++        raise UnsupportedPhonemeTypeError(
++            f"phoneme_type {self.config.phoneme_type.value!r} requires optional extra {self._spec.optional_extra!r}"
++        )
++
++    @classmethod
++    def from_config(cls, path: str | Path, **kwargs: Any) -> PiperFrontend:
++        return cls(VoiceConfig.from_json(path), **kwargs)
++
++    def encode(self, phonemes: Iterable[str]) -> EncodeResult:
++        return self._spec.encoder.encode(tuple(phonemes), self.config.phoneme_id_map, self.missing)
++
++    @property
++    def diagnostics(self) -> FrontendDiagnostics:
++        backend_diagnostics = getattr(self.backend, "diagnostics", None)
++        return FrontendDiagnostics(
++            phoneme_type=self.config.phoneme_type.value,
++            backend=backend_diagnostics.implementation if backend_diagnostics else type(self.backend).__name__,
++            backend_diagnostics=backend_diagnostics,
++        )
++
++    def phonemize_prepared(self, text: str) -> PhonemizeResult:
++        if self.config.phoneme_type is PhonemeType.ESPEAK:
++            segments = parse_raw_blocks(text)
++            groups = compose_raw_segments(
++                segments,
++                lambda value: self.backend.phonemize(value, voice=self.config.espeak_voice),
++            )
++        else:
++            groups = self.backend.phonemize(text, voice=self.config.espeak_voice)
++        sentences: list[PhonemeSentence] = []
++        warning_messages: list[str] = []
++        for group in groups:
++            encoded = self.encode(group)
++            sentences.append(
++                PhonemeSentence(
++                    tuple(group),
++                    encoded.ids,
++                    encoded.missing_phonemes,
++                    encoded.warnings,
++                )
++            )
++            warning_messages.extend(encoded.warnings)
++        return PhonemizeResult(
++            text=text,
++            sentences=tuple(sentences),
++            diagnostics=self.diagnostics,
++            warnings=tuple(warning_messages),
++        )
++
++    phonemize = phonemize_prepared
++
++    def close(self) -> None:
++        close = getattr(self.backend, "close", None)
++        if close is not None:
++            close()
++
++    def __enter__(self) -> PiperFrontend:
++        return self
++
++    def __exit__(self, *_: object) -> None:
++        self.close()
+diff --git a/piperg2p/raw_blocks.py b/piperg2p/raw_blocks.py
+new file mode 100644
+index 0000000..0d61ba6
+--- /dev/null
++++ b/piperg2p/raw_blocks.py
+@@ -0,0 +1,78 @@
++from __future__ import annotations
++
++from collections.abc import Callable, Iterable
++from dataclasses import dataclass
++
++
++@dataclass(frozen=True)
++class TextSegment:
++    text: str
++
++
++@dataclass(frozen=True)
++class RawPhonemeSegment:
++    text: str
++
++
++Segment = TextSegment | RawPhonemeSegment
++
++
++def parse_raw_blocks(text: str) -> list[Segment]:
++    """Parse eSpeak-style raw blocks without interpreting their contents."""
++    segments: list[Segment] = []
++    position = 0
++    text_start = 0
++    while position < len(text):
++        opening = text.find("[[", position)
++        closing = text.find("]]", position)
++        if opening < 0 and closing < 0:
++            break
++        if closing >= 0 and (opening < 0 or closing < opening):
++            position = closing + 2
++            continue
++        if opening > text_start:
++            segments.append(TextSegment(text[text_start:opening]))
++        end = text.find("]]", opening + 2)
++        if end < 0:
++            remainder = text[opening:]
++            if segments and isinstance(segments[-1], TextSegment):
++                segments[-1] = TextSegment(segments[-1].text + remainder)
++            else:
++                segments.append(TextSegment(remainder))
++            return [segment for segment in segments if not isinstance(segment, TextSegment) or segment.text]
++        raw = text[opening + 2 : end].strip()
++        segments.append(RawPhonemeSegment(raw))
++        position = end + 2
++        text_start = position
++    if text_start < len(text):
++        segments.append(TextSegment(text[text_start:]))
++    elif not segments and text:
++        segments.append(TextSegment(text))
++    return [segment for segment in segments if not isinstance(segment, TextSegment) or segment.text]
++
++
++def compose_raw_segments(
++    segments: Iterable[Segment], phonemize_text: Callable[[str], list[list[str]]]
++) -> list[list[str]]:
++    """Compose backend sentence groups and raw codepoints in source order."""
++    output: list[list[str]] = []
++    join_next = False
++    for segment in segments:
++        if isinstance(segment, RawPhonemeSegment):
++            if not segment.text:
++                join_next = True
++                continue
++            if output:
++                output[-1].extend(segment.text)
++            else:
++                output.append(list(segment.text))
++            join_next = True
++            continue
++        groups = [list(group) for group in phonemize_text(segment.text)]
++        if not groups:
++            continue
++        if join_next and output:
++            output[-1].extend(groups.pop(0))
++            join_next = False
++        output.extend(groups)
++    return [group for group in output if group]
+diff --git a/piperg2p/registry.py b/piperg2p/registry.py
+new file mode 100644
+index 0000000..f4f6364
+--- /dev/null
++++ b/piperg2p/registry.py
+@@ -0,0 +1,43 @@
++from __future__ import annotations
++
++from collections.abc import Callable
++from dataclasses import dataclass
++
++from .backends import EspeakBackend, PhonemeBackend, TextBackend
++from .codec import EncoderStrategy, OrdinaryEncoder, PinyinEncoder
++from .config import PhonemeType, VoiceConfig
++from .errors import UnsupportedPhonemeTypeError
++
++
++@dataclass(frozen=True)
++class FrontendSpec:
++    phoneme_type: PhonemeType
++    backend_factory: Callable[[VoiceConfig], PhonemeBackend]
++    encoder: EncoderStrategy
++    optional_extra: str | None = None
++
++
++def _text_backend(config: VoiceConfig) -> TextBackend:
++    del config
++    return TextBackend()
++
++
++def _espeak_backend(config: VoiceConfig) -> EspeakBackend:
++    return EspeakBackend(vowel_clusters=config.vowel_clusters)
++
++
++REGISTRY: dict[PhonemeType, FrontendSpec] = {
++    PhonemeType.TEXT: FrontendSpec(PhonemeType.TEXT, _text_backend, OrdinaryEncoder()),
++    PhonemeType.ESPEAK: FrontendSpec(PhonemeType.ESPEAK, _espeak_backend, OrdinaryEncoder()),
++    PhonemeType.PINYIN: FrontendSpec(PhonemeType.PINYIN, _text_backend, PinyinEncoder(), "zh"),
++    PhonemeType.HEBREW: FrontendSpec(PhonemeType.HEBREW, _text_backend, OrdinaryEncoder(), "he"),
++    PhonemeType.JAPANESE: FrontendSpec(PhonemeType.JAPANESE, _text_backend, OrdinaryEncoder(), "ja"),
++    PhonemeType.THAI: FrontendSpec(PhonemeType.THAI, _text_backend, OrdinaryEncoder(), "th"),
++}
++
++
++def spec_for(config: VoiceConfig) -> FrontendSpec:
++    try:
++        return REGISTRY[config.phoneme_type]
++    except KeyError as exc:
++        raise UnsupportedPhonemeTypeError(f"unsupported phoneme_type {config.phoneme_type.value!r}") from exc
+diff --git a/piperg2p/types.py b/piperg2p/types.py
+new file mode 100644
+index 0000000..2ad3f0e
+--- /dev/null
++++ b/piperg2p/types.py
+@@ -0,0 +1,44 @@
++"""Public immutable result types."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Any
++
++from .diagnostics import FrontendDiagnostics
++
++
++@dataclass(frozen=True)
++class EncodeResult:
++    ids: tuple[int, ...]
++    missing_phonemes: tuple[str, ...] = ()
++    warnings: tuple[str, ...] = ()
++
++
++@dataclass(frozen=True)
++class PhonemeSentence:
++    phonemes: tuple[str, ...]
++    ids: tuple[int, ...]
++    missing_phonemes: tuple[str, ...] = ()
++    warnings: tuple[str, ...] = ()
++    metadata: tuple[tuple[str, Any], ...] = ()
++
++    @property
++    def phoneme_string(self) -> str:
++        return "".join(self.phonemes)
++
++
++@dataclass(frozen=True)
++class PhonemizeResult:
++    text: str
++    sentences: tuple[PhonemeSentence, ...]
++    diagnostics: FrontendDiagnostics | None = None
++    warnings: tuple[str, ...] = ()
++
++    @property
++    def phonemes(self) -> tuple[str, ...]:
++        return tuple(phone for sentence in self.sentences for phone in sentence.phonemes)
++
++    @property
++    def ids(self) -> tuple[int, ...]:
++        return tuple(identifier for sentence in self.sentences for identifier in sentence.ids)
+diff --git a/pyproject.toml b/pyproject.toml
+new file mode 100644
+index 0000000..a77dbab
+--- /dev/null
++++ b/pyproject.toml
+@@ -0,0 +1,52 @@
++[build-system]
++requires = ["setuptools>=68", "wheel"]
++build-backend = "setuptools.build_meta"
++
++[project]
++name = "piperg2p"
++version = "0.2.0"
++description = "Independent Piper-compatible text/phoneme/id frontend for Piper ONNX voice configs"
++readme = "README.md"
++requires-python = ">=3.10"
++license = {text = "Apache-2.0"}
++authors = [{name = "piperg2p contributors"}]
++keywords = ["tts", "piper", "g2p", "phonemizer", "onnx", "espeak"]
++classifiers = [
++  "Development Status :: 3 - Alpha",
++  "License :: OSI Approved :: Apache Software License",
++  "Programming Language :: Python :: 3",
++  "Programming Language :: Python :: 3.10",
++  "Programming Language :: Python :: 3.11",
++  "Programming Language :: Python :: 3.12",
++  "Programming Language :: Python :: 3.13",
++  "Topic :: Multimedia :: Sound/Audio :: Speech",
++]
++
++[project.optional-dependencies]
++dev = ["pytest>=7", "pytest-cov>=4", "ruff>=0.6", "mypy>=1.10", "build>=1"]
++espeak-direct = []
++zh = []
++ja = []
++th = []
++he = []
++ar = []
++
++[project.urls]
++Repository = "https://github.com/example/piperg2p"
++
++[tool.setuptools.packages.find]
++where = ["."]
++include = ["piperg2p*"]
++
++[tool.pytest.ini_options]
++testpaths = ["tests"]
++addopts = "-q"
++markers = [
++  "espeak: tests requiring eSpeak",
++  "integration: integration tests",
++  "resource_heavy: tests requiring large resources",
++  "reference: pinned reference compatibility tests",
++]
++
++[tool.ruff.lint]
++ignore = ["PYI034", "UP037"]
+diff --git a/tests/test_clause_backend.py b/tests/test_clause_backend.py
+new file mode 100644
+index 0000000..b5da297
+--- /dev/null
++++ b/tests/test_clause_backend.py
+@@ -0,0 +1,86 @@
++import sys
++import warnings
++
++import pytest
++
++from piperg2p import (
++    BackendFallbackWarning,
++    BackendUnavailableError,
++    EspeakBackend,
++    EspeakCliBackend,
++    NativeEspeakProvider,
++)
++from piperg2p.backends.espeak.clauses import (
++    Clause,
++    compose_clauses,
++    merge_vowel_clusters,
++)
++from piperg2p.backends.espeak.discovery import discover
++
++
++def test_clause_composition_preserves_punctuation_and_normalizes():
++    clauses = [
++        Clause("a", ",", False),
++        Clause("e", ".", True),
++        Clause("?", None, True),
++    ]
++    assert compose_clauses(clauses) == [["a", ",", " ", "e", "."], ["?"]]
++
++
++def test_clause_composition_removes_switches_and_merges_longest():
++    assert merge_vowel_clusters(["a", "b", "c"], frozenset({("a", "b"), ("a", "b", "c")})) == ["abc"]
++    assert compose_clauses([Clause("a(b)\u0301", None, False)], frozenset()) == [["a", "\u0301"]]
++
++
++def test_discovery_finds_explicit_executable(tmp_path):
++    executable = tmp_path / "espeak"
++    executable.write_text("", encoding="utf-8")
++    assert discover(executable=str(executable)).executable == str(executable)
++    with pytest.raises(BackendUnavailableError):
++        discover(executable=str(tmp_path / "missing"))
++
++
++def test_cli_backend_uses_utf8_and_reports_best_effort(monkeypatch):
++    executable = sys.executable
++    calls = []
++
++    class Process:
++        returncode = 0
++        stdout = "hɛlə"
++        stderr = ""
++
++    def run(args, **kwargs):
++        calls.append((args, kwargs))
++        return Process()
++
++    monkeypatch.setattr("subprocess.run", run)
++    backend = EspeakCliBackend(executable=executable)
++    assert backend.phonemize("hé", voice="en-us") == [["h", "ɛ", "l", "ə"]]
++    assert calls[0][1]["encoding"] == "utf-8"
++    assert backend.diagnostics.parity == "best-effort"
++
++
++def test_native_provider_is_available_when_library_is_installed():
++    try:
++        provider = NativeEspeakProvider()
++    except BackendUnavailableError:
++        pytest.skip("native eSpeak library unavailable")
++    try:
++        clauses = provider.clauses("Hello, world.", "en-us")
++        assert len(clauses) >= 2
++        assert clauses[0].terminator == ","
++        assert clauses[-1].sentence_end
++        assert provider.diagnostics.version
++        assert provider.diagnostics.exact_clause_api
++    finally:
++        provider.close()
++
++
++def test_auto_backend_prefers_native_or_diagnoses_cli():
++    with warnings.catch_warnings(record=True) as caught:
++        warnings.simplefilter("always")
++        backend = EspeakBackend(mode="auto")
++    assert backend.diagnostics.parity in {"exact", "best-effort"}
++    if backend.diagnostics.parity == "best-effort":
++        assert any(issubclass(item.category, BackendFallbackWarning) for item in caught)
++    backend.close()
+diff --git a/tests/test_codec.py b/tests/test_codec.py
+new file mode 100644
+index 0000000..cf9a9ee
+--- /dev/null
++++ b/tests/test_codec.py
+@@ -0,0 +1,23 @@
++from piperg2p import PiperFrontend, VoiceConfig, encode_phonemes
++
++
++def _config(phoneme_type="text"):
++    return VoiceConfig.from_dict({
++        "num_symbols": 7,
++        "num_speakers": 1,
++        "audio": {"sample_rate": 22050},
++        "espeak": {"voice": "en-us"},
++        "phoneme_type": phoneme_type,
++        "phoneme_id_map": {"_": [0], "^": [1], "$": [2], "a": [3], "b": [4], " ": [5], ".": [6]},
++    })
++
++
++def test_piper_id_framing():
++    result = encode_phonemes(["a", "b"], _config().phoneme_id_map)
++    assert result.ids == (1, 0, 3, 0, 4, 0, 2)
++
++
++def test_text_frontend_uses_config_map():
++    result = PiperFrontend(_config()).phonemize("ab")
++    assert result.sentences[0].phonemes == ("a", "b")
++    assert result.sentences[0].ids == (1, 0, 3, 0, 4, 0, 2)
+diff --git a/tests/test_codec_contracts.py b/tests/test_codec_contracts.py
+new file mode 100644
+index 0000000..698c65d
+--- /dev/null
++++ b/tests/test_codec_contracts.py
+@@ -0,0 +1,50 @@
++import warnings
++
++import pytest
++
++from piperg2p import (
++    MissingPhonemeError,
++    MissingPhonemePolicy,
++    MissingPhonemeWarning,
++    encode_phonemes,
++    encode_pinyin,
++)
++
++MAP = {
++    "^": [10, 11],
++    "_": [0],
++    "$": [12],
++    "a": [3],
++    "x": [4, 5],
++    "1": [6],
++    " ": [7],
++    ".": [8],
++}
++
++
++def test_ordinary_framing_supports_multi_id_symbols():
++    result = encode_phonemes(["a", "x"], MAP)
++    assert result.ids == (10, 11, 0, 3, 0, 4, 5, 0, 12)
++    assert isinstance(result.ids, tuple)
++
++
++def test_missing_policies_report_and_warn():
++    with warnings.catch_warnings(record=True) as caught:
++        warnings.simplefilter("always")
++        result = encode_phonemes(["missing", "missing"], MAP)
++    assert result.missing_phonemes == ("missing", "missing")
++    assert len([item for item in caught if issubclass(item.category, MissingPhonemeWarning)]) == 2
++    assert result.warnings
++    assert encode_phonemes(["missing"], MAP, missing=MissingPhonemePolicy.IGNORE).missing_phonemes == ("missing",)
++    with pytest.raises(MissingPhonemeError):
++        encode_phonemes(["missing"], MAP, missing=MissingPhonemePolicy.ERROR)
++
++
++def test_missing_control_symbols_are_config_errors():
++    with pytest.raises(ValueError):
++        encode_phonemes([], {"^": [1], "_": [0]})
++
++
++def test_pinyin_padding_is_group_aware():
++    result = encode_pinyin(["a", "1", "x", " ", "."], MAP)
++    assert result.ids == (10, 11, 3, 6, 0, 4, 5, 7, 0, 8, 0, 12)
+diff --git a/tests/test_config.py b/tests/test_config.py
+new file mode 100644
+index 0000000..73696ee
+--- /dev/null
++++ b/tests/test_config.py
+@@ -0,0 +1,60 @@
++import pytest
++
++from piperg2p import (
++    ConfigError,
++    PhonemeType,
++    PiperConfig,
++    UnsupportedPhonemeTypeError,
++    VoiceConfig,
++)
++
++
++def raw_config(**updates):
++    value = {
++        "num_symbols": 8,
++        "num_speakers": 1,
++        "audio": {"sample_rate": 22050},
++        "phoneme_type": "text",
++        "phoneme_id_map": {"_": 0, "^": 1, "$": 2, "a": 3, "b": [4], "ab": [5]},
++    }
++    value.update(updates)
++    return value
++
++
++def test_config_is_typed_immutable_and_round_trips():
++    config = VoiceConfig.from_dict(raw_config())
++    assert config.phoneme_type is PhonemeType.TEXT
++    assert PiperConfig is VoiceConfig
++    assert config.phoneme_id_map["a"] == (3,)
++    with pytest.raises(TypeError):
++        config.phoneme_id_map["x"] = (6,)
++    assert VoiceConfig.from_dict(config.to_dict()) == config
++
++
++def test_strict_config_requires_core_fields():
++    with pytest.raises(ConfigError, match="sample_rate"):
++        VoiceConfig.from_dict({"num_symbols": 1, "num_speakers": 1, "phoneme_id_map": {"_": 0}})
++    with pytest.raises(ConfigError, match="num_symbols"):
++        VoiceConfig.from_dict({"num_speakers": 1, "audio": {"sample_rate": 22050}, "phoneme_id_map": {"_": 0}})
++
++
++def test_lenient_config_infers_legacy_defaults():
++    config = VoiceConfig.from_dict({"phoneme_id_map": {"_": 0}}, strict=False)
++    assert config.num_symbols == 1
++    assert config.sample_rate == 22050
++
++
++def test_config_rejects_unknown_phoneme_type_and_bad_ids():
++    with pytest.raises(UnsupportedPhonemeTypeError):
++        VoiceConfig.from_dict(raw_config(phoneme_type="unknown"))
++    with pytest.raises(ConfigError, match="negative"):
++        VoiceConfig.from_dict(raw_config(phoneme_id_map={"_": 0, "^": 1, "$": -1}))
++    with pytest.raises(ConfigError, match="outside"):
++        VoiceConfig.from_dict(raw_config(num_symbols=3))
++
++
++def test_vowel_clusters_validate_merged_symbol():
++    config = VoiceConfig.from_dict(raw_config(vowel_clusters=[["a", "b"]]))
++    assert config.vowel_clusters == frozenset({("a", "b")})
++    with pytest.raises(ConfigError, match="absent"):
++        VoiceConfig.from_dict(raw_config(vowel_clusters=[["a", "x"]]))
+diff --git a/tests/test_independence.py b/tests/test_independence.py
+new file mode 100644
+index 0000000..2d785b8
+--- /dev/null
++++ b/tests/test_independence.py
+@@ -0,0 +1,8 @@
++import importlib
++
++
++def test_public_imports_do_not_require_piper():
++    module = importlib.import_module("piperg2p")
++    assert module.PiperFrontend
++    assert "piper" not in module.__dict__
++    assert module.PhonemeType.TEXT.value == "text"
+diff --git a/tests/test_raw_frontend.py b/tests/test_raw_frontend.py
+new file mode 100644
+index 0000000..0265c8f
+--- /dev/null
++++ b/tests/test_raw_frontend.py
+@@ -0,0 +1,50 @@
++from dataclasses import dataclass
++
++from piperg2p import PiperFrontend, VoiceConfig
++from piperg2p.raw_blocks import (
++    RawPhonemeSegment,
++    TextSegment,
++    compose_raw_segments,
++    parse_raw_blocks,
++)
++
++
++@dataclass
++class FakeBackend:
++    def phonemize(self, text: str, *, voice: str):
++        del voice
++        return [[character for character in text]] if text else []
++
++    def close(self):
++        pass
++
++
++def config():
++    return VoiceConfig.from_dict({
++        "num_symbols": 20,
++        "num_speakers": 1,
++        "audio": {"sample_rate": 22050},
++        "phoneme_type": "espeak",
++        "phoneme_id_map": {"_": 0, "^": 1, "$": 2, **{chr(97 + i): 3 + i for i in range(17)}},
++    })
++
++
++def test_raw_parser_preserves_order_and_unmatched_delimiters():
++    assert parse_raw_blocks("a[[ ɹ ]]b") == [TextSegment("a"), RawPhonemeSegment("ɹ"), TextSegment("b")]
++    assert parse_raw_blocks("a [[ unmatched") == [TextSegment("a [[ unmatched")]
++    assert parse_raw_blocks("a ]] b") == [TextSegment("a ]] b")]
++
++
++def test_raw_composition_joins_first_text_sentence_after_raw():
++    result = compose_raw_segments(
++        [TextSegment("a"), RawPhonemeSegment("ɹ"), TextSegment("bc")],
++        lambda text: [[*text]],
++    )
++    assert result == [["a", "ɹ", "b", "c"]]
++
++
++def test_frontend_raw_blocks_use_custom_backend_and_encode():
++    frontend = PiperFrontend(config(), backend=FakeBackend(), missing="ignore")
++    result = frontend.phonemize("ab[[c]]d")
++    assert result.sentences[0].phonemes == ("a", "b", "c", "d")
++    assert result.diagnostics.phoneme_type == "espeak"

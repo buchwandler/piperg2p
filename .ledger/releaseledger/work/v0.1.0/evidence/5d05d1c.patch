@@ -1,0 +1,18 @@
+ .github/workflows/test.yml | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml
+index b09a03b..6355c90 100644
+--- a/.github/workflows/test.yml
++++ b/.github/workflows/test.yml
+@@ -106,7 +106,9 @@ jobs:
+       - run: >-
+           /tmp/piperg2p-wheel-test/bin/python -c
+           "from importlib.metadata import version; import piperg2p; assert piperg2p.__version__ == version('piperg2p'); print(piperg2p.__version__)"
+-      - run: /tmp/piperg2p-wheel-test/bin/python -c "from piperg2p import PiperFrontend, VoiceConfig; print(PiperFrontend(VoiceConfig.from_dict({'phoneme_type': 'text', 'num_symbols': 4, 'num_speakers': 1, 'audio': {'sample_rate': 22050}, 'phoneme_id_map': {'_': 0, '^': 1, '$': 2, 'a': 3}})).phonemize('a').ids)"
++      - run: >-
++          /tmp/piperg2p-wheel-test/bin/python -c
++          "from piperg2p import PiperFrontend, VoiceConfig; print(PiperFrontend(VoiceConfig.from_dict({'phoneme_type': 'text', 'num_symbols': 4, 'num_speakers': 1, 'audio': {'sample_rate': 22050}, 'phoneme_id_map': {'_': 0, '^': 1, '$': 2, 'a': 3}})).phonemize('a').ids)"
+
+   publish:
+     if: startsWith(github.ref, 'refs/tags/v')

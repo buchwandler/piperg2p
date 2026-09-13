@@ -1,0 +1,123 @@
+ .github/workflows/codecov.yml        | 28 ++++++++++++++++++++++
+ .github/workflows/pre-commit.yml     | 26 ++++++++++++++++++++
+ .github/workflows/python-publish.yml | 46 ++++++++++++++++++++++++++++++++++++
+ 3 files changed, 100 insertions(+)
+
+diff --git a/.github/workflows/codecov.yml b/.github/workflows/codecov.yml
+new file mode 100644
+index 0000000..0e8b9e5
+--- /dev/null
++++ b/.github/workflows/codecov.yml
+@@ -0,0 +1,28 @@
++name: Coverage
++
++on:
++  push:
++  pull_request:
++
++permissions:
++  contents: read
++
++jobs:
++  run:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - name: Setup Python
++        uses: actions/setup-python@v5
++        with:
++          python-version: "3.12"
++      - name: Install dependencies
++        run: |
++          python -m pip install --upgrade pip
++          python -m pip install -e ".[dev]"
++      - name: Generate coverage report
++        run: python -m pytest --cov=piperg2p --cov-branch --cov-report=term-missing --cov-report=xml --cov-fail-under=80
++      - name: Upload coverage to Codecov
++        uses: codecov/codecov-action@v5
++        with:
++          token: ${{ secrets.CODECOV_TOKEN }}
+diff --git a/.github/workflows/pre-commit.yml b/.github/workflows/pre-commit.yml
+new file mode 100644
+index 0000000..0e604e4
+--- /dev/null
++++ b/.github/workflows/pre-commit.yml
+@@ -0,0 +1,26 @@
++name: pre-commit
++
++on:
++  pull_request:
++  push:
++
++permissions:
++  contents: read
++
++jobs:
++  pre-commit:
++    runs-on: ubuntu-latest
++
++    steps:
++      - uses: actions/checkout@v4
++
++      - uses: actions/setup-python@v5
++        with:
++          python-version: "3.13"
++
++      - name: Install Python tools
++        run: |
++          python -m pip install --upgrade pip
++          python -m pip install "ruff==0.16.0"
++
++      - uses: pre-commit/action@v3.0.1
+diff --git a/.github/workflows/python-publish.yml b/.github/workflows/python-publish.yml
+new file mode 100644
+index 0000000..9bae849
+--- /dev/null
++++ b/.github/workflows/python-publish.yml
+@@ -0,0 +1,46 @@
++# Build and publish a Python package when a GitHub Release is published.
++
++name: Upload Python Package
++
++on:
++  release:
++    types: [published]
++
++permissions:
++  contents: read
++
++jobs:
++  deploy:
++    runs-on: ubuntu-latest
++
++    steps:
++      - name: Check out release
++        uses: actions/checkout@v7
++        with:
++          fetch-depth: 0
++
++      - name: Set up Python
++        uses: actions/setup-python@v7
++        with:
++          python-version: "3.13"
++
++      - name: Install release tooling and package
++        run: |
++          python -m pip install --upgrade pip build
++          python -m pip install -e ".[dev]"
++      - name: Run release checks
++        run: |
++          ruff check lexphon tests
++          ruff format --check piperg2p tests
++          mypy lexphon
++          pytest
++      - name: Build package
++        run: python -m build
++      - name: Verify release versions
++        run: python scripts/check_dist_versions.py dist/*.whl dist/*.tar.gz --tag "${{ github.event.release.tag_name }}"
++
++      - name: Publish package to PyPI
++        uses: pypa/gh-action-pypi-publish@v1.14.1
++        with:
++          password: ${{ secrets.PYPI_API_TOKEN }}
++          attestations: false

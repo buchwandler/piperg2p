@@ -1,0 +1,36 @@
+ tests/test_clause_backend.py            | 5 ++++-
+ tests/test_real_optional_integration.py | 5 ++++-
+ 2 files changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/tests/test_clause_backend.py b/tests/test_clause_backend.py
+index c60835f..4f2218b 100644
+--- a/tests/test_clause_backend.py
++++ b/tests/test_clause_backend.py
+@@ -85,7 +85,10 @@ def test_native_provider_can_initialize_if_library_is_installed():
+ def test_auto_backend_prefers_native_or_diagnoses_cli():
+     with warnings.catch_warnings(record=True) as caught:
+         warnings.simplefilter("always")
+-        backend = EspeakBackend(mode="auto")
++        try:
++            backend = EspeakBackend(mode="auto")
++        except BackendUnavailableError:
++            pytest.skip("eSpeak native library and CLI are unavailable")
+     assert backend.diagnostics.parity in {"exact", "best-effort"}
+     if backend.diagnostics.parity == "best-effort":
+         assert any(issubclass(item.category, BackendFallbackWarning) for item in caught)
+diff --git a/tests/test_real_optional_integration.py b/tests/test_real_optional_integration.py
+index 74ffbc7..d84e618 100644
+--- a/tests/test_real_optional_integration.py
++++ b/tests/test_real_optional_integration.py
+@@ -23,7 +23,10 @@ def test_exact_native_epeak_clause_contract_if_provisioned():
+
+
+ def test_auto_backend_reports_exact_or_cli_fallback():
+-    backend = EspeakBackend(mode="auto")
++    try:
++        backend = EspeakBackend(mode="auto")
++    except BackendUnavailableError:
++        pytest.skip("eSpeak native library and CLI are unavailable")
+     try:
+         if backend.diagnostics.parity == "exact":
+             assert backend.diagnostics.exact_clause_api

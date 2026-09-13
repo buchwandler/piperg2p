@@ -1,0 +1,1548 @@
+ .github/workflows/test.yml          |  59 +++++++++++++++
+ README.md                           |   4 +-
+ benchmarks/benchmark_reference.py   | 111 ++++++++++++++++++++++++++-
+ benchmarks/data/core.json           |  28 +++++--
+ docs/README.md                      |   2 +-
+ docs/compatibility.md               |   7 +-
+ docs/lexicons.md                    |  10 +--
+ docs/phoneme-types.md               |  11 +--
+ docs/provenance.md                  |   2 +
+ docs/reference-benchmark.md         |  24 +++++-
+ piperg2p/__init__.py                |   2 +
+ piperg2p/errors.py                  |   4 +
+ piperg2p/frontend.py                |  25 ++++++-
+ piperg2p/lexicons/__init__.py       |  14 +++-
+ piperg2p/lexicons/base.py           |  51 +++++++++++++
+ piperg2p/lexicons/g2lex.py          |  94 ++++++++++++++++++-----
+ piperg2p/lexicons/lexphon.py        | 135 +++++++++++++++++++++++----------
+ piperg2p/lexicons/overlay.py        |  11 ++-
+ piperg2p/registry.py                |  23 ++++--
+ pyproject.toml                      |  15 ++--
+ tests/test_benchmark_reference.py   |  59 +++++++++++++++
+ tests/test_config.py                |  16 ++++
+ tests/test_lexicon_adapters.py      | 145 +++++++++++++++++++++++++++++-------
+ tests/test_lexicon_overlay_extra.py |  19 +++++
+ tools/check_release_artifacts.py    |  55 ++++++++++++++
+ 25 files changed, 797 insertions(+), 129 deletions(-)
+
+diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml
+index 356bd50..96d8b1a 100644
+--- a/.github/workflows/test.yml
++++ b/.github/workflows/test.yml
+@@ -48,3 +48,62 @@ jobs:
+       - run: python -m pip install -e '.[dev,lexicons]'
+       - run: pytest -q tests/test_lexicon_adapters.py tests/test_lexicon_spans.py tests/test_lexicon_overlay.py tests/test_lexicon_overlay_extra.py tests/test_real_optional_integration.py
+       - run: ruff check .
++
++  direct-g2lex:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with:
++          python-version: '3.12'
++      - run: python -m pip install --upgrade pip
++      - run: python -m pip install -e '.[dev,g2lex]'
++      - run: pytest -q tests/test_lexicon_adapters.py tests/test_real_optional_integration.py
++      - run: ruff check .
++
++  reference:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with:
++          python-version: '3.12'
++      - run: python -m pip install -e '.[dev]'
++      - run: python benchmarks/benchmark_reference.py --output reference-report.json
++      - uses: actions/upload-artifact@v4
++        with:
++          name: reference-report
++          path: reference-report.json
++
++  artifact:
++    needs: [core, direct-g2lex, reference]
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with:
++          python-version: '3.12'
++      - run: python -m pip install --upgrade pip
++      - run: python -m pip install -e '.[dev]'
++      - run: rm -rf dist && python -m build
++      - run: python tools/check_release_artifacts.py dist
++      - run: python -m twine check dist/*
++      - run: python -m venv /tmp/piperg2p-wheel-test
++      - run: /tmp/piperg2p-wheel-test/bin/python -m pip install --no-deps dist/*.whl
++      - run: /tmp/piperg2p-wheel-test/bin/python -c "from piperg2p import PiperFrontend, VoiceConfig; print(PiperFrontend(VoiceConfig.from_dict({'phoneme_type': 'text', 'num_symbols': 4, 'num_speakers': 1, 'audio': {'sample_rate': 22050}, 'phoneme_id_map': {'_': 0, '^': 1, '$': 2, 'a': 3}})).phonemize('a').ids)"
++
++  publish:
++    if: startsWith(github.ref, 'refs/tags/v')
++    needs: artifact
++    runs-on: ubuntu-latest
++    permissions:
++      id-token: write
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with:
++          python-version: '3.12'
++      - run: python -m pip install --upgrade pip build twine
++      - run: python -m build
++      - run: python -m twine check dist/*
++      - uses: pypa/gh-action-pypi-publish@release/v1
+diff --git a/README.md b/README.md
+index acdf27b..f9e099b 100644
+--- a/README.md
++++ b/README.md
+@@ -10,7 +10,7 @@
+ - Sentence-grouped results and raw `[[ ... ]]` phoneme blocks in eSpeak mode.
+ - Immutable diagnostics, typed configuration, errors, and missing-phoneme reporting.
+
+-The native clause API is labeled `exact` only when it is available. The CLI path is always labeled `best-effort`. Pinyin, Japanese, Thai, Hebrew, and Arabic adapters are planned but are not part of this release.
++The native clause API is labeled `exact` only when it is available. The CLI path is always labeled `best-effort`. This release supports the named Piper Python `text` and ordinary `espeak` profile only. Pinyin, Hebrew, Japanese, and Thai are recognized configuration values but unavailable. Arabic eSpeak voices are rejected until Piper-compatible preprocessing is implemented.
+
+ ## Install
+
+@@ -39,6 +39,8 @@ The configured `phoneme_id_map` is authoritative. `result.ids` is a convenience
+
+ Lexicon support is an opt-in overlay on the existing eSpeak frontend. Install `piperg2p[lexphon]` for managed Lexphon identifiers or `piperg2p[g2lex]` for explicit local `.g2lex` files. Raw `[[...]]` blocks have precedence, lexicon misses use PiperG2P's eSpeak backend, and no dictionary downloads occur implicitly. See [docs/lexicons.md](docs/lexicons.md).
+
++
++Use `*:espeak` assets for generic IPA pronunciation overrides. Use `*:espeak-piper` assets for Piper raw phoneme behavior with `phoneme_encoding="espeak-ipa3"`. Lexphon installs and verifies data externally, while PiperG2P owns interpretation, precedence, and voice-map ID encoding.
+ ## Compatibility
+
+ Compatibility is measured against pinned reference profiles, not a moving upstream branch. See [docs/compatibility.md](docs/compatibility.md), [docs/espeak.md](docs/espeak.md), and [docs/provenance.md](docs/provenance.md).
+diff --git a/benchmarks/benchmark_reference.py b/benchmarks/benchmark_reference.py
+index 54d8709..8c0f1ed 100644
+--- a/benchmarks/benchmark_reference.py
++++ b/benchmarks/benchmark_reference.py
+@@ -1,9 +1,14 @@
+-"""Execute PiperG2P compatibility and lexicon-overlay benchmark corpora."""
++"""Compare PiperG2P output with reviewed output from a pinned Piper environment."""
+
+ from __future__ import annotations
+
+ import argparse
++import hashlib
++import importlib.metadata
+ import json
++import platform
++import sys
++from dataclasses import asdict
+ from pathlib import Path
+ from typing import Any
+
+@@ -11,6 +16,33 @@ from piperg2p import PiperFrontend, VoiceConfig
+ from piperg2p.lexicons import G2LexLookup
+
+
++def _sha256(path: Path) -> str:
++    return hashlib.sha256(path.read_bytes()).hexdigest()
++
++
++def _dependency_versions(names: tuple[str, ...]) -> dict[str, str | None]:
++    result: dict[str, str | None] = {}
++    for name in names:
++        try:
++            result[name] = importlib.metadata.version(name)
++        except importlib.metadata.PackageNotFoundError:
++            result[name] = None
++    return result
++
++
++def _asset_identity(paths: list[str]) -> list[dict[str, Any]]:
++    result: list[dict[str, Any]] = []
++    for value in paths:
++        path = Path(value)
++        item: dict[str, Any] = {"path": str(path)}
++        if path.is_file():
++            item.update({"size": path.stat().st_size, "sha256": _sha256(path)})
++        else:
++            item["missing"] = True
++        result.append(item)
++    return result
++
++
+ def _run_case(frontend: PiperFrontend, case: dict[str, Any]) -> dict[str, Any]:
+     result = frontend.phonemize(case["text"])
+     return {
+@@ -23,8 +55,16 @@ def _run_case(frontend: PiperFrontend, case: dict[str, Any]) -> dict[str, Any]:
+         ],
+         "diagnostics": {
+             "backend": result.diagnostics.backend if result.diagnostics else None,
++            "compatibility_profile": (
++                result.diagnostics.compatibility_profile if result.diagnostics else None
++            ),
++            "backend_diagnostics": (
++                asdict(result.diagnostics.backend_diagnostics)
++                if result.diagnostics and result.diagnostics.backend_diagnostics
++                else None
++            ),
+             "lexicon": (
+-                result.diagnostics.lexicon.implementation
++                asdict(result.diagnostics.lexicon)
+                 if result.diagnostics and result.diagnostics.lexicon
+                 else None
+             ),
+@@ -32,14 +72,61 @@ def _run_case(frontend: PiperFrontend, case: dict[str, Any]) -> dict[str, Any]:
+     }
+
+
++def _runtime_metadata(
++    corpus: dict[str, Any], config: Path | None, assets: list[str]
++) -> dict[str, Any]:
++    profile = corpus["profile"]
++    metadata: dict[str, Any] = {
++        "reference": {
++            "repository": profile.get("reference"),
++            "commit": profile.get("commit"),
++            "version": profile.get("version"),
++        },
++        "python": sys.version,
++        "platform": platform.platform(),
++        "implementation": platform.python_implementation(),
++        "dependencies": _dependency_versions(("piperg2p", "g2lex", "lexphon")),
++        "asset_identity": _asset_identity(assets),
++    }
++    if config is not None:
++        metadata["voice_config_sha256"] = _sha256(config)
++    return metadata
++
++
++def _compare_cases(actual: list[dict[str, Any]], expected: list[dict[str, Any]]) -> list[dict[str, Any]]:
++    expected_by_id = {case["id"]: case for case in expected}
++    comparisons: list[dict[str, Any]] = []
++    for case in actual:
++        reference = expected_by_id.get(case["id"])
++        if reference is None:
++            comparisons.append({"id": case["id"], "status": "missing-expected"})
++            continue
++        actual_value = {key: case[key] for key in ("phoneme_type", "sentences")}
++        expected_value = {key: reference.get(key) for key in ("phoneme_type", "sentences")}
++        comparisons.append(
++            {
++                "id": case["id"],
++                "status": "pass" if actual_value == expected_value else "mismatch",
++                "actual": actual_value,
++                "expected": expected_value,
++            }
++        )
++    return comparisons
++
++
+ def main() -> int:
+     parser = argparse.ArgumentParser(description=__doc__)
+     parser.add_argument("--corpus", type=Path, default=Path(__file__).parent / "data" / "core.json")
+     parser.add_argument("--config", type=Path, help="Voice config used to execute compatible corpus cases")
+     parser.add_argument("--mode", choices=("reference", "overlay"), default="reference")
+     parser.add_argument("--lexicon", action="append", default=[], help="Direct .g2lex asset for overlay mode")
++    parser.add_argument("--expected", type=Path, help="Reviewed expected output to compare against")
++    parser.add_argument("--write-expected", action="store_true", help="Explicitly replace the expected output")
+     parser.add_argument("--output", type=Path)
+     args = parser.parse_args()
++    if args.write_expected and args.expected is None:
++        parser.error("--write-expected requires --expected")
++
+     corpus = json.loads(args.corpus.read_text(encoding="utf-8"))
+     profile = corpus["profile"]
+     report: dict[str, Any] = {
+@@ -50,6 +137,7 @@ def main() -> int:
+             else "PiperG2P-owned lexicon overlay extension"
+         ),
+         "profile": profile,
++        "metadata": _runtime_metadata(corpus, args.config, args.lexicon),
+         "cases": [],
+     }
+     if args.config is None:
+@@ -71,13 +159,28 @@ def main() -> int:
+         finally:
+             if lookup is not None:
+                 lookup.close()
+-        report["status"] = "executed"
++        if args.expected is not None:
++            if args.write_expected:
++                args.expected.write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
++                report["comparison"] = {"status": "written-explicitly"}
++            elif not args.expected.is_file():
++                report["comparison"] = {"status": "missing-expected", "path": str(args.expected)}
++                report["status"] = "blocked"
++            else:
++                expected = json.loads(args.expected.read_text(encoding="utf-8"))
++                comparisons = _compare_cases(report["cases"], expected.get("cases", []))
++                report["comparison"] = {
++                    "status": "pass" if all(item["status"] == "pass" for item in comparisons) else "mismatch",
++                    "cases": comparisons,
++                }
++        report.setdefault("status", "executed")
++
+     rendered = json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True)
+     if args.output:
+         args.output.write_text(rendered + "\n", encoding="utf-8")
+     else:
+         print(rendered)
+-    return 0
++    return 1 if report.get("comparison", {}).get("status") in {"mismatch", "missing-expected"} else 0
+
+
+ if __name__ == "__main__":
+diff --git a/benchmarks/data/core.json b/benchmarks/data/core.json
+index b390125..f9b17c1 100644
+--- a/benchmarks/data/core.json
++++ b/benchmarks/data/core.json
+@@ -1,14 +1,32 @@
+ {
+   "profile": {
+-    "name": "piperg2p-phase1-core",
++    "name": "piperg2p-piper-python",
+     "reference": "OHF-Voice/piper1-gpl",
++    "version": "1.8.0",
+     "commit": "404aefedbd74baa0bd43e451bc407a2b3aace0f5",
+-    "target": "piper-python-main",
+-    "status": "metadata-only until reference subprocess is provisioned"
++    "target": "piper-python",
++    "status": "requires reviewed output from the pinned reference environment"
+   },
+   "cases": [
+     {"id": "text-nfd", "phoneme_type": "text", "text": "Cafe\u0301", "policy": "exact"},
+-    {"id": "espeak-punctuation", "phoneme_type": "espeak", "text": "Hello, world.", "policy": "diagnostic"},
+-    {"id": "espeak-residual", "phoneme_type": "espeak", "text": "No terminal punctuation", "policy": "diagnostic"}
++    {"id": "text-composed", "phoneme_type": "text", "text": "Café", "policy": "exact"},
++    {"id": "espeak-comma", "phoneme_type": "espeak", "text": "Hello, world", "policy": "exact"},
++    {"id": "espeak-colon", "phoneme_type": "espeak", "text": "Ratio: two", "policy": "exact"},
++    {"id": "espeak-semicolon", "phoneme_type": "espeak", "text": "One; two", "policy": "exact"},
++    {"id": "espeak-terminal", "phoneme_type": "espeak", "text": "Hello.", "policy": "exact"},
++    {"id": "espeak-residual", "phoneme_type": "espeak", "text": "No terminal punctuation", "policy": "exact"},
++    {"id": "espeak-sentences", "phoneme_type": "espeak", "text": "First sentence. Second sentence?", "policy": "exact"},
++    {"id": "espeak-language-switch", "phoneme_type": "espeak", "text": "Hello (en) world", "policy": "exact"},
++    {"id": "raw-left", "phoneme_type": "espeak", "text": "[[hɛloʊ]] world", "policy": "exact"},
++    {"id": "raw-middle", "phoneme_type": "espeak", "text": "hello [[hɛloʊ]] world", "policy": "exact"},
++    {"id": "raw-right", "phoneme_type": "espeak", "text": "hello [[hɛloʊ]]", "policy": "exact"},
++    {"id": "raw-spaces", "phoneme_type": "espeak", "text": "hello[[hɛloʊ]] world", "policy": "exact"},
++    {"id": "vowel-clusters", "phoneme_type": "espeak", "text": "Hello", "policy": "exact"},
++    {"id": "missing-voice-symbol", "phoneme_type": "text", "text": "?", "policy": "piper-like-warning"},
++    {"id": "ipa3-lexicon-hit", "phoneme_type": "espeak", "text": "church", "policy": "overlay"},
++    {"id": "ipa3-lexicon-miss", "phoneme_type": "espeak", "text": "unknown", "policy": "overlay"},
++    {"id": "mixed-hit-miss", "phoneme_type": "espeak", "text": "church unknown", "policy": "overlay"},
++    {"id": "ipa3-tie-joiner", "phoneme_type": "espeak", "text": "church", "policy": "encoded-id"},
++    {"id": "arabic-policy", "phoneme_type": "espeak", "voice": "ar", "text": "مرحبا", "policy": "unsupported"}
+   ]
+ }
+diff --git a/docs/README.md b/docs/README.md
+index 1008e23..457faf0 100644
+--- a/docs/README.md
++++ b/docs/README.md
+@@ -1,3 +1,3 @@
+ # Documentation
+
+-Start with [index.md](index.md).
+\ No newline at end of file
++Start with [index.md](index.md).
+diff --git a/docs/compatibility.md b/docs/compatibility.md
+index f8b9c0e..843fd34 100644
+--- a/docs/compatibility.md
++++ b/docs/compatibility.md
+@@ -1,6 +1,6 @@
+ # Compatibility policy
+
+-The primary target is the Python Piper voice behavior at pinned reference commits. `libpiper` behavior is a separate future benchmark profile and is not silently mixed into the runtime.
++The primary target is the Piper Python voice behavior at the pinned Piper 1.8.0 reference commit `404aefedbd74baa0bd43e451bc407a2b3aace0f5`. `libpiper` behavior is a separate compatibility profile and is not silently mixed into the runtime.
+
+ | Feature | Core | Compatibility label |
+ | --- | --- | --- |
+@@ -8,7 +8,8 @@ The primary target is the Python Piper voice behavior at pinned reference commit
+ | Native eSpeak clause API | system library | exact when the public terminator API is present |
+ | eSpeak CLI | executable required | best-effort |
+ | Raw blocks | yes, eSpeak only | reference-tested foundation |
+-| Pinyin, Japanese, Thai, Hebrew, Arabic | no provider in Phase 1 | unsupported or deferred |
+-| Lexphon/G2Lex overlay | opt-in | override extension, not upstream exact parity |
++| Pinyin, Japanese, Thai, Hebrew | recognized configuration values | unavailable, no provider |
++| Arabic eSpeak | recognized voice profile | explicitly unsupported until preprocessing is implemented |
++| Lexphon/G2Lex overlay | opt-in | `override-generic-ipa` or `piper-espeak-frozen` extension |
+
+ The pinned Phase 1 corpus metadata is in `benchmarks/data/core.json`. It is not a golden output and cannot silently refresh. Exactness claims require reference output and dependency metadata.
+diff --git a/docs/lexicons.md b/docs/lexicons.md
+index 3f7a204..cb01e40 100644
+--- a/docs/lexicons.md
++++ b/docs/lexicons.md
+@@ -22,7 +22,7 @@ from piperg2p import PiperFrontend
+
+ frontend = PiperFrontend.from_config(
+     "voice.onnx.json",
+-    lexicons=("de-de:espeak",),
++    lexicons=("de-de:espeak-piper",),
+ )
+ ```
+
+@@ -49,8 +49,7 @@ frontend = PiperFrontend.from_config(
+ )
+ ```
+
+-The direct adapter uses exact keys and configured path order. It is intended for local development before assets are installed into Lexphon. Production profile and encoding normalization belongs in Lexphon. Direct V1 assets must use IPA/Unicode IPA metadata when that metadata is present.
+-
++The direct adapter uses exact keys and configured path order. It is intended for local development before assets are installed into Lexphon. Built-in adapters read the modern `phoneme_encoding` metadata, accept generic IPA and `espeak-ipa3`, and reject unsupported kinds, languages, or encodings.
+ Injected adapters are owned by the caller. Adapters created internally from `lexicons=` are closed by `PiperFrontend`.
+
+ ## Precedence and composition
+@@ -62,13 +61,12 @@ The precedence order is:
+ 3. PiperG2P eSpeak fallback for unresolved source intervals.
+ 4. The configured model missing-symbol policy during ID encoding.
+
+-Words are scanned without discarding punctuation or source whitespace. Lookup is batched per ordinary source segment. Unresolved intervals are coalesced so eSpeak retains context, while explicit raw and lexical segments remain in source order. Final phonemes use NFD normalization and vowel-cluster merging before voice-specific ID encoding.
++Words are scanned without discarding punctuation or source whitespace. Lookup is batched per ordinary source segment. Unresolved intervals are coalesced so eSpeak retains context, while explicit raw and lexical segments remain in source order. Generic IPA hits use NFD normalization. `espeak-ipa3` hits are preserved as Piper raw phoneme content. Final IDs always use the voice-specific map and selected missing-symbol policy.
+
+ A lexicon hit containing a symbol absent from the voice map is not silently replaced by eSpeak. `error`, `warn`, and `ignore` follow the normal encoder policy.
+
+ ## Diagnostics and reproducibility
+-
+-`result.diagnostics.lexicon` reports whether the overlay is enabled, its implementation, language, identifiers, and compatibility label. Asset provenance and the eSpeak version used to generate or consume an asset should be recorded by the asset producer. A frozen eSpeak-derived dictionary combined with a different live eSpeak version can produce mixed-version output.
++`result.diagnostics.lexicon` reports whether the overlay is enabled, its implementation, language, identifiers, encodings, immutable asset provenance, and compatibility label. The labels distinguish generic IPA overrides from Piper frozen eSpeak assets. Asset provenance should include data version, producer, transform, and generator identity when supplied. A frozen eSpeak-derived dictionary combined with a different live eSpeak version can produce mixed-version output, so lexicon-first output is an extension rather than an unqualified exactness claim.
+
+ Lexicon lookup/resource failures are errors, not normal misses. Optional packages are imported only when an adapter is selected. Core imports and eSpeak-only frontends do not require Lexphon or G2Lex.
+
+diff --git a/docs/phoneme-types.md b/docs/phoneme-types.md
+index b4c4e8f..dc4592d 100644
+--- a/docs/phoneme-types.md
++++ b/docs/phoneme-types.md
+@@ -6,9 +6,10 @@ The configuration enum recognizes the six current Piper phoneme type names:
+ | --- | --- |
+ | `text` | implemented in core |
+ | `espeak` | native and CLI backends implemented |
+-| `pinyin` | encoder scaffold only, provider deferred |
+-| `japanese` | deferred |
+-| `thai` | deferred |
+-| `hebrew` | deferred |
++| `pinyin` | recognized configuration value, unavailable |
++| `japanese` | recognized configuration value, unavailable |
++| `thai` | recognized configuration value, unavailable |
++| `hebrew` | recognized configuration value, unavailable |
++| Arabic eSpeak voice | explicitly blocked until preprocessing is implemented |
+
+-Selecting a deferred type without a custom backend raises an actionable `UnsupportedPhonemeTypeError`. Optional language dependencies are not imported by the core package.
++Selecting a deferred type without a custom backend raises an actionable `UnsupportedPhonemeTypeError`. Arabic eSpeak profiles raise `UnsupportedCompatibilityError`. Optional language dependencies are not imported by the core package.
+diff --git a/docs/provenance.md b/docs/provenance.md
+index 3b77722..f333b34 100644
+--- a/docs/provenance.md
++++ b/docs/provenance.md
+@@ -14,6 +14,8 @@ This project is implemented independently under Apache-2.0. The compatibility re
+
+ | Lexphon managed assets | Lexphon public data/profile APIs | Keep installation, verification, and normalization in the optional adapter. |
+ | G2Lex local assets | G2Lex public open/lookup APIs | Keep direct lookup narrow, ordered, and exact-key. |
++
++PiperG2P preserves `phoneme_encoding`, lexicon ID, data version, producer, transform, and generator identity from built-in assets. `ipa` is a generic override. `espeak-ipa3` is a Piper raw pronunciation representation and is not normalized by Lexphon.
+ | Lexicon overlay | User-provided implementation guide | Preserve Piper sentence/model encoding ownership in PiperG2P. |
+ | KokoroG2P | Architectural reference only | Reuse lifecycle ideas without copying source or tests. |
+
+diff --git a/docs/reference-benchmark.md b/docs/reference-benchmark.md
+index 10d6260..00eea05 100644
+--- a/docs/reference-benchmark.md
++++ b/docs/reference-benchmark.md
+@@ -1,9 +1,29 @@
+ # Reference benchmark
+
+-`benchmarks/data/core.json` records a small pinned Phase 1 corpus identity and its comparison policies. Run the metadata inspection with:
++`benchmarks/data/core.json` records the pinned Piper Python 1.8.0 profile, commit, and minimum compatibility corpus. It covers text normalization, punctuation, sentence boundaries, language switches, raw blocks, vowel clusters, missing symbols, IPA3 overlay hits and misses, mixed sentences, tie or joiner behavior, and the Arabic policy.
++
++Inspect the corpus metadata without executing a voice configuration:
+
+ ```bash
+ python benchmarks/benchmark_reference.py
+ ```
+
+-Reference Piper execution belongs in a separate development environment or subprocess. It is not a runtime dependency. Golden outputs must be refreshed explicitly, with a pinned commit, dependency versions, voice configuration hash, and human review. The current corpus intentionally reports metadata only until that isolated provider is provisioned.
++Execute PiperG2P with a voice configuration and write a reproducible report:
++
++```bash
++python benchmarks/benchmark_reference.py \
++  --config voice.onnx.json \
++  --output report.json
++```
++
++Reference Piper execution belongs in a separate pinned development environment. Its reviewed output can be compared with:
++
++```bash
++python benchmarks/benchmark_reference.py \
++  --config voice.onnx.json \
++  --expected benchmarks/data/core.expected.json
++```
++
++The command records Piper commit and version, Python and platform information, dependency versions, voice configuration hash, and overlay asset identity. A missing or mismatched expected file exits nonzero. Expected output is never created or changed during normal execution. Replacing it requires the explicit `--write-expected --expected PATH` command and subsequent human review.
++
++The normal runtime package does not depend on Piper. Reference dependencies and expected outputs are development and CI evidence only.
+diff --git a/piperg2p/__init__.py b/piperg2p/__init__.py
+index 5ea44a6..5203332 100644
+--- a/piperg2p/__init__.py
++++ b/piperg2p/__init__.py
+@@ -37,6 +37,7 @@ from .errors import (
+     PiperG2PWarning,
+     ResourceError,
+     ResourceUnavailableError,
++    UnsupportedCompatibilityError,
+     UnsupportedPhonemeTypeError,
+ )
+ from .frontend import PiperFrontend
+@@ -88,6 +89,7 @@ __all__ = [
+     "ResourceUnavailableError",
+     "TextBackend",
+     "TextSegment",
++    "UnsupportedCompatibilityError",
+     "UnsupportedPhonemeTypeError",
+     "VoiceConfig",
+     "compose_raw_segments",
+diff --git a/piperg2p/errors.py b/piperg2p/errors.py
+index 2937fd5..c77d6b8 100644
+--- a/piperg2p/errors.py
++++ b/piperg2p/errors.py
+@@ -15,6 +15,10 @@ class UnsupportedPhonemeTypeError(ConfigError):
+     """The configuration names a frontend that is not supported."""
+
+
++
++class UnsupportedCompatibilityError(ConfigError):
++    """The recognized profile is outside the implemented compatibility boundary."""
++
+ class BackendError(PiperG2PError):
+     """Base class for backend failures."""
+
+diff --git a/piperg2p/frontend.py b/piperg2p/frontend.py
+index db1dfd0..118050d 100644
+--- a/piperg2p/frontend.py
++++ b/piperg2p/frontend.py
+@@ -8,7 +8,11 @@ from .backends import EspeakBackend, PhonemeBackend
+ from .codec import EncodeResult, MissingPhonemePolicy
+ from .config import PhonemeType, VoiceConfig
+ from .diagnostics import FrontendDiagnostics
+-from .errors import LexiconConfigurationError, UnsupportedPhonemeTypeError
++from .errors import (
++    LexiconConfigurationError,
++    UnsupportedCompatibilityError,
++    UnsupportedPhonemeTypeError,
++)
+ from .lexicons.base import LexiconDiagnostics, PronunciationLookup
+ from .lexicons.overlay import compose_lexicon_overlay
+ from .raw_blocks import compose_raw_segments, parse_raw_blocks
+@@ -16,6 +20,10 @@ from .registry import spec_for
+ from .types import PhonemeSentence, PhonemizeResult
+
+
++def _is_arabic_voice(voice: str) -> bool:
++    normalized = voice.casefold().replace("_", "-")
++    return normalized == "ar" or normalized.startswith(("ar-", "ar+"))
++
+ class PiperFrontend:
+     """Voice-config-driven Piper frontend independent from Piper's runtime."""
+
+@@ -32,6 +40,11 @@ class PiperFrontend:
+         self.config = config
+         self.missing = MissingPhonemePolicy(missing)
+         self._spec = spec_for(config)
++        if config.phoneme_type is PhonemeType.ESPEAK and _is_arabic_voice(config.espeak_voice):
++            raise UnsupportedCompatibilityError(
++                "Arabic Piper eSpeak preprocessing is not implemented; "
++                "ordinary eSpeak compatibility is unavailable for Arabic voices"
++            )
+         self._lexicon_identifiers = tuple(lexicons)
+         if self._lexicon_identifiers and lexicon_backend is not None:
+             raise LexiconConfigurationError("lexicons and lexicon_backend are mutually exclusive")
+@@ -55,10 +68,14 @@ class PiperFrontend:
+                     vowel_clusters=self.config.vowel_clusters,
+                     merge_vowel_clusters=False,
+                 )
++            assert self._spec.backend_factory is not None
+             return self._spec.backend_factory(self.config)
+-        raise UnsupportedPhonemeTypeError(
+-            f"phoneme_type {self.config.phoneme_type.value!r} requires optional extra {self._spec.optional_extra!r}"
+-        )
++        if not self._spec.implemented or self._spec.backend_factory is None:
++            extra = f" Install piperg2p[{self._spec.optional_extra}]." if self._spec.optional_extra else ""
++            raise UnsupportedPhonemeTypeError(
++                f"phoneme_type {self.config.phoneme_type.value!r} is recognized but not implemented.{extra}"
++            )
++        return self._spec.backend_factory(self.config)
+
+     def _ensure_lexicon_backend(self) -> PronunciationLookup:
+         if self._lexicon_backend is not None:
+diff --git a/piperg2p/lexicons/__init__.py b/piperg2p/lexicons/__init__.py
+index 2b9b642..51b06e4 100644
+--- a/piperg2p/lexicons/__init__.py
++++ b/piperg2p/lexicons/__init__.py
+@@ -1,11 +1,23 @@
+-from .base import LexiconDiagnostics, LexiconPronunciation, PronunciationLookup
++from .base import (
++    SUPPORTED_PHONEME_ENCODINGS,
++    LexiconDiagnostics,
++    LexiconPronunciation,
++    LexiconProvenance,
++    PronunciationLookup,
++    compatibility_for_encodings,
++    normalize_phoneme_encoding,
++)
+ from .g2lex import G2LexLookup
+ from .lexphon import LexphonLookup
+
+ __all__ = [
++    "SUPPORTED_PHONEME_ENCODINGS",
+     "G2LexLookup",
+     "LexiconDiagnostics",
+     "LexiconPronunciation",
++    "LexiconProvenance",
+     "LexphonLookup",
+     "PronunciationLookup",
++    "compatibility_for_encodings",
++    "normalize_phoneme_encoding",
+ ]
+diff --git a/piperg2p/lexicons/base.py b/piperg2p/lexicons/base.py
+index 2705881..8f64e21 100644
+--- a/piperg2p/lexicons/base.py
++++ b/piperg2p/lexicons/base.py
+@@ -1,9 +1,51 @@
++
+ from __future__ import annotations
+
+ from collections.abc import Sequence
+ from dataclasses import dataclass
+ from typing import Protocol
+
++SUPPORTED_PHONEME_ENCODINGS = frozenset({"ipa", "espeak-ipa3"})
++
++
++def normalize_phoneme_encoding(value: object | None) -> str:
++    """Return the canonical runtime name for a lexicon pronunciation encoding."""
++    if value is None:
++        return "ipa"
++    normalized = str(value).strip().casefold().replace("_", "-")
++    if normalized in {"ipa", "unicode-ipa", "ipa-unicode", "generic-ipa"}:
++        return "ipa"
++    if normalized in {"espeak-ipa3", "e-speak-ipa3", "piper-ipa3"}:
++        return "espeak-ipa3"
++    raise ValueError(f"unsupported phoneme encoding {value!r}")
++
++
++def compatibility_for_encodings(encodings: Sequence[str]) -> str:
++    """Return the public compatibility label for active lexicon encodings."""
++    values = frozenset(encodings)
++    if values == {"ipa"}:
++        return "override-generic-ipa"
++    if values == {"espeak-ipa3"}:
++        return "piper-espeak-frozen"
++    if values:
++        return "mixed-lexicon-encodings"
++    return "override"
++
++
++@dataclass(frozen=True)
++class LexiconProvenance:
++    """Immutable identity and provenance for a pronunciation asset."""
++
++    lexicon_id: str | None = None
++    language: str | None = None
++    kind: str | None = None
++    source_encoding: str = "ipa"
++    data_version: str | None = None
++    producer: str | None = None
++    transform: str | None = None
++    generator: str | None = None
++    asset_path: str | None = None
++
+
+ @dataclass(frozen=True)
+ class LexiconPronunciation:
+@@ -12,6 +54,13 @@ class LexiconPronunciation:
+     lexicon_id: str | None = None
+     matched_key: str | None = None
+     source_encoding: str | None = None
++    provenance: LexiconProvenance | None = None
++
++    def __post_init__(self) -> None:
++        if self.source_encoding is not None:
++            object.__setattr__(self, "source_encoding", normalize_phoneme_encoding(self.source_encoding))
++        if self.provenance is not None and self.source_encoding is None:
++            object.__setattr__(self, "source_encoding", self.provenance.source_encoding)
+
+
+ @dataclass(frozen=True)
+@@ -22,6 +71,8 @@ class LexiconDiagnostics:
+     identifiers: tuple[str, ...]
+     compatibility: str
+     detail: str | None = None
++    encodings: tuple[str, ...] = ()
++    provenance: tuple[LexiconProvenance, ...] = ()
+
+
+ class PronunciationLookup(Protocol):
+diff --git a/piperg2p/lexicons/g2lex.py b/piperg2p/lexicons/g2lex.py
+index 7328642..5c443e3 100644
+--- a/piperg2p/lexicons/g2lex.py
++++ b/piperg2p/lexicons/g2lex.py
+@@ -5,7 +5,13 @@ from pathlib import Path
+ from typing import Any
+
+ from ..errors import LexiconDependencyError, LexiconResourceError
+-from .base import LexiconDiagnostics, LexiconPronunciation
++from .base import (
++    LexiconDiagnostics,
++    LexiconPronunciation,
++    LexiconProvenance,
++    compatibility_for_encodings,
++    normalize_phoneme_encoding,
++)
+
+
+ class G2LexLookup:
+@@ -15,16 +21,20 @@ class G2LexLookup:
+         self.paths = tuple(str(path) for path in paths)
+         self.language = language
+         self._assets: tuple[Any, ...] | None = None
++        self._provenance: tuple[LexiconProvenance, ...] = ()
+         self._closed = False
+
+     @property
+     def diagnostics(self) -> LexiconDiagnostics:
++        encodings = tuple(item.source_encoding for item in self._provenance)
+         return LexiconDiagnostics(
+             enabled=True,
+             implementation="g2lex",
+             language=self.language,
+             identifiers=self.paths,
+-            compatibility="override",
++            compatibility=compatibility_for_encodings(encodings),
++            encodings=encodings,
++            provenance=self._provenance,
+         )
+
+     @staticmethod
+@@ -39,40 +49,87 @@ class G2LexLookup:
+                 return values
+         return {}
+
+-    def _validate_asset(self, asset: Any, path: str) -> None:
++    @staticmethod
++    def _metadata_value(metadata: dict[str, Any], *keys: str) -> Any:
++        source = metadata.get("source")
++        sources = (source,) if isinstance(source, dict) else ()
++        for key in keys:
++            if key in metadata and metadata[key] is not None:
++                return metadata[key]
++            for source_values in sources:
++                if source_values.get(key) is not None:
++                    return source_values[key]
++        return None
++
++    def _validate_asset(self, asset: Any, path: str) -> LexiconProvenance:
+         metadata = self._metadata(asset)
+-        declared_language = metadata.get("language") or metadata.get("locale")
++        declared_language = self._metadata_value(metadata, "language", "locale")
+         if self.language and declared_language and not str(declared_language).lower().startswith(self.language.lower()):
+             raise LexiconResourceError(
+                 f"G2Lex asset {path!r} declares language {declared_language!r}, "
+                 f"not requested {self.language!r}"
+             )
+-        alphabet = metadata.get("pronunciation_alphabet") or metadata.get("alphabet")
+-        if alphabet and str(alphabet).lower().replace("_", "-") not in {"ipa", "unicode-ipa", "ipa-unicode"}:
++        kind = self._metadata_value(metadata, "kind")
++        if kind is not None and str(kind).casefold() != "pronunciation":
+             raise LexiconResourceError(
+-                f"G2Lex asset {path!r} uses unsupported pronunciation alphabet {alphabet!r}; "
+-                "direct lookup supports IPA/Unicode IPA assets"
++                f"G2Lex asset {path!r} has unsupported kind {kind!r}; "
++                "direct lookup requires pronunciation assets"
+             )
++        raw_encoding = self._metadata_value(
++            metadata, "phoneme_encoding", "pronunciation_alphabet", "alphabet"
++        )
++        try:
++            source_encoding = normalize_phoneme_encoding(raw_encoding)
++        except ValueError as exc:
++            raise LexiconResourceError(
++                f"G2Lex asset {path!r} uses unsupported phoneme encoding {raw_encoding!r}; "
++                "supported encodings are IPA and espeak-ipa3"
++            ) from exc
++        provenance = LexiconProvenance(
++            lexicon_id=str(self._metadata_value(metadata, "id", "lexicon_id") or path),
++            language=str(declared_language) if declared_language is not None else None,
++            kind=str(kind) if kind is not None else None,
++            source_encoding=source_encoding,
++            data_version=self._optional_string(
++                self._metadata_value(metadata, "data_version", "version")
++            ),
++            producer=self._optional_string(self._metadata_value(metadata, "producer")),
++            transform=self._optional_string(
++                self._metadata_value(metadata, "transform_id", "transform")
++            ),
++            generator=self._optional_string(
++                self._metadata_value(metadata, "generator", "generator_id")
++            ),
++            asset_path=path,
++        )
++        return provenance
++
++    @staticmethod
++    def _optional_string(value: object | None) -> str | None:
++        return None if value is None else str(value)
+
+     def _ensure_assets(self) -> tuple[Any, ...]:
+         if self._closed:
+             raise LexiconResourceError("G2Lex lookup adapter is closed")
+         if self._assets is not None:
+             return self._assets
++        for path in self.paths:
++            if not Path(path).is_file():
++                raise LexiconResourceError(f"G2Lex asset does not exist: {path}")
+         try:
+             import g2lex
+         except ImportError as exc:
+             raise LexiconDependencyError(
+-                "Direct G2Lex support requires the optional 'g2lex' extra. Install piperg2p[g2lex]."
++                "Direct G2Lex support requires the optional 'g2lex' extra. "
++                "Install piperg2p[g2lex]."
+             ) from exc
+         assets: list[Any] = []
++        provenance: list[LexiconProvenance] = []
+         try:
+             for path in self.paths:
+-                if not Path(path).is_file():
+-                    raise LexiconResourceError(f"G2Lex asset does not exist: {path}")
+                 asset = g2lex.open(path)
+-                self._validate_asset(asset, path)
+                 assets.append(asset)
++                provenance.append(self._validate_asset(asset, path))
+         except LexiconResourceError:
+             for asset in assets:
+                 asset.close()
+@@ -80,22 +137,25 @@ class G2LexLookup:
+         except Exception as exc:
+             for asset in assets:
+                 asset.close()
+-            raise LexiconResourceError(f"Could not open G2Lex asset {path!r}") from exc
++            failed_path = path if "path" in locals() else self.paths[0] if self.paths else ""
++            raise LexiconResourceError(f"Could not open G2Lex asset {failed_path!r}") from exc
+         self._assets = tuple(assets)
++        self._provenance = tuple(provenance)
+         return self._assets
+
+     def lookup(self, word: str, *, tag: str | None = None) -> LexiconPronunciation | None:
+         assets = self._ensure_assets()
+         try:
+-            for asset, path in zip(assets, self.paths):
++            for asset, path, provenance in zip(assets, self.paths, self._provenance):
+                 value = asset.lookup(word, tag=tag)
+                 if value is not None:
+-                    pronunciation = str(value)
+                     return LexiconPronunciation(
+-                        pronunciation=pronunciation,
++                        pronunciation=str(value),
+                         source=f"g2lex:{path}",
+-                        lexicon_id=path,
++                        lexicon_id=provenance.lexicon_id,
+                         matched_key=word,
++                        source_encoding=provenance.source_encoding,
++                        provenance=provenance,
+                     )
+         except Exception as exc:
+             if isinstance(exc, LexiconResourceError):
+diff --git a/piperg2p/lexicons/lexphon.py b/piperg2p/lexicons/lexphon.py
+index 7f68943..339e2b4 100644
+--- a/piperg2p/lexicons/lexphon.py
++++ b/piperg2p/lexicons/lexphon.py
+@@ -1,14 +1,21 @@
+ from __future__ import annotations
+
+ from collections.abc import Sequence
++from dataclasses import replace
++from pathlib import Path
+ from typing import Any
+
+ from ..errors import LexiconDependencyError, LexiconResourceError
+-from .base import LexiconDiagnostics, LexiconPronunciation
++from .base import (
++    LexiconDiagnostics,
++    LexiconPronunciation,
++    normalize_phoneme_encoding,
++)
++from .g2lex import G2LexLookup
+
+
+ class LexphonLookup:
+-    """Lazy, lexicon-only adapter around Lexphon."""
++    """Resolve installed Lexphon assets and read them as Piper lexicons."""
+
+     def __init__(
+         self,
+@@ -20,81 +27,133 @@ class LexphonLookup:
+         self.language = language
+         self.identifiers = tuple(identifiers)
+         self.store = store
+-        self._runtime: Any = None
++        self._runtime: G2LexLookup | None = None
++        self._metadata: tuple[dict[str, Any], ...] = ()
+         self._closed = False
+
+     @property
+     def diagnostics(self) -> LexiconDiagnostics:
++        runtime = self._runtime
++        if runtime is None:
++            return LexiconDiagnostics(
++                enabled=True,
++                implementation="lexphon",
++                language=self.language,
++                identifiers=self.identifiers,
++                compatibility="override",
++            )
++        diagnostics = runtime.diagnostics
+         return LexiconDiagnostics(
+             enabled=True,
+             implementation="lexphon",
+             language=self.language,
+             identifiers=self.identifiers,
+-            compatibility="override",
++            compatibility=diagnostics.compatibility,
++            detail=diagnostics.detail,
++            encodings=diagnostics.encodings,
++            provenance=diagnostics.provenance,
+         )
+
+-    def _ensure_runtime(self) -> Any:
++    @staticmethod
++    def _optional_string(value: object | None) -> str | None:
++        return None if value is None else str(value)
++
++    def _ensure_runtime(self) -> G2LexLookup:
+         if self._closed:
+             raise LexiconResourceError("Lexphon lookup adapter is closed")
+         if self._runtime is not None:
+             return self._runtime
+         try:
+-            from lexphon import Phonemizer  # type: ignore[import-not-found]
++            import lexphon
+         except ImportError as exc:
+             raise LexiconDependencyError(
+-                "Lexphon support requires the optional 'lexphon' extra. Install piperg2p[lexphon]."
++                "Lexphon support requires the optional 'lexphon' extra. "
++                "Install piperg2p[lexphon]."
+             ) from exc
+         try:
+-            self._runtime = Phonemizer(
+-                self.language,
+-                lexicons=list(self.identifiers),
+-                store=self.store,
+-                fallback=None,
+-            )
++            data_store = self.store
++            if data_store is None:
++                data_store = lexphon.DataStore()
++            elif isinstance(data_store, (str, Path)):
++                data_store = lexphon.DataStore(data_store)
++            paths: list[str] = []
++            metadata: list[dict[str, Any]] = []
++            for identifier in self.identifiers:
++                item = data_store.metadata(identifier)
++                if not isinstance(item, dict):
++                    raise LexiconResourceError(
++                        f"Lexphon metadata for {identifier!r} is not an object"
++                    )
++                self._validate_catalog_metadata(identifier, item)
++                paths.append(str(data_store.path(identifier)))
++                metadata.append(item)
++            runtime = G2LexLookup(paths, language=self.language)
++            self._metadata = tuple(metadata)
++            self._runtime = runtime
++            return runtime
++        except LexiconResourceError:
++            raise
+         except Exception as exc:
+             identifiers = ", ".join(repr(identifier) for identifier in self.identifiers)
+             raise LexiconResourceError(
+-                f"Could not open Lexphon lexicon(s) {identifiers}. "
++                f"Could not resolve Lexphon lexicon(s) {identifiers}. "
+                 "Install or verify the requested data, or pass a different DataStore."
+             ) from exc
+-        return self._runtime
+
+-    @staticmethod
+-    def _convert(token: Any) -> LexiconPronunciation | None:
++    def _validate_catalog_metadata(self, identifier: str, metadata: dict[str, Any]) -> None:
++        kind = metadata.get("kind")
++        if kind is not None and str(kind).casefold() != "pronunciation":
++            raise LexiconResourceError(
++                f"Lexphon asset {identifier!r} has unsupported kind {kind!r}; "
++                "Piper lookup requires pronunciation assets"
++            )
++        language = metadata.get("language") or metadata.get("locale")
++        if language and not str(language).lower().startswith(self.language.lower()):
++            raise LexiconResourceError(
++                f"Lexphon asset {identifier!r} declares language {language!r}, "
++                f"not requested {self.language!r}"
++            )
++        encoding = metadata.get("phoneme_encoding") or metadata.get("pronunciation_alphabet")
++        try:
++            normalize_phoneme_encoding(encoding)
++        except ValueError as exc:
++            raise LexiconResourceError(
++                f"Lexphon asset {identifier!r} uses unsupported phoneme encoding {encoding!r}"
++            ) from exc
++
++    def _convert(
++        self, token: LexiconPronunciation | None
++    ) -> LexiconPronunciation | None:
+         if token is None:
+             return None
+-        if isinstance(token, LexiconPronunciation):
+-            return token
+-        source = getattr(token, "source", "lexphon")
+-        source_name = getattr(source, "value", None) or str(source)
+-        pronunciation = getattr(token, "pronunciation", None) or getattr(token, "text", token)
+-        return LexiconPronunciation(
+-            pronunciation=str(pronunciation),
+-            source=source_name,
+-            lexicon_id=getattr(token, "lexicon_id", None),
+-            matched_key=getattr(token, "matched_key", None),
+-            source_encoding=getattr(token, "source_encoding", None),
++        provenance = token.provenance
++        identifier = token.lexicon_id
++        if provenance is not None and self._runtime is not None:
++            for index, runtime_path in enumerate(self._runtime.paths):
++                if provenance.asset_path == runtime_path:
++                    identifier = self.identifiers[index]
++                    provenance = replace(provenance, lexicon_id=identifier)
++                    break
++        return replace(
++            token,
++            source=f"lexphon:{identifier}" if identifier else token.source,
++            lexicon_id=identifier,
++            provenance=provenance,
+         )
+
+     def lookup(self, word: str, *, tag: str | None = None) -> LexiconPronunciation | None:
+         runtime = self._ensure_runtime()
+         try:
+-            token = runtime.lookup_lexicon(word, tag=tag)
++            return self._convert(runtime.lookup(word, tag=tag))
++        except LexiconResourceError:
++            raise
+         except Exception as exc:
+             raise LexiconResourceError(f"Lexphon lookup failed for {word!r}") from exc
+-        return self._convert(token)
+
+     def lookup_many(
+         self, words: Sequence[str], *, tag: str | None = None
+     ) -> tuple[LexiconPronunciation | None, ...]:
+-        runtime = self._ensure_runtime()
+-        try:
+-            tokens = runtime.lookup_many(tuple(words), tag=tag)
+-        except AttributeError:
+-            return tuple(self.lookup(word, tag=tag) for word in words)
+-        except Exception as exc:
+-            raise LexiconResourceError("Lexphon batch lookup failed") from exc
+-        return tuple(self._convert(token) for token in tokens)
++        return tuple(self.lookup(word, tag=tag) for word in words)
+
+     def close(self) -> None:
+         if not self._closed and self._runtime is not None:
+diff --git a/piperg2p/lexicons/overlay.py b/piperg2p/lexicons/overlay.py
+index 0945e6f..ad2e885 100644
+--- a/piperg2p/lexicons/overlay.py
++++ b/piperg2p/lexicons/overlay.py
+@@ -37,6 +37,15 @@ def _coalesce_text_segments(segments: Iterable[PreparedSegment]) -> tuple[Prepar
+     return tuple(result)
+
+
++def _prepare_lexicon_pronunciation(pronunciation) -> str:
++    """Prepare a lexicon hit according to its declared source encoding."""
++    encoding = pronunciation.source_encoding or "ipa"
++    if encoding == "espeak-ipa3":
++        return pronunciation.pronunciation
++    if encoding == "ipa":
++        return unicodedata.normalize("NFD", pronunciation.pronunciation)
++    raise LexiconResourceError(f"unsupported lexicon pronunciation encoding {encoding!r}")
++
+ def overlay_text_segment(
+     segment: PreparedSegment,
+     lookup: PronunciationLookup,
+@@ -66,7 +75,7 @@ def overlay_text_segment(
+             prepared.append(
+                 PreparedSegment(
+                     "phonemes",
+-                    unicodedata.normalize("NFD", pronunciation.pronunciation),
++                    _prepare_lexicon_pronunciation(pronunciation),
+                     start,
+                     end,
+                     pronunciation.source,
+diff --git a/piperg2p/registry.py b/piperg2p/registry.py
+index f4f6364..94456cf 100644
+--- a/piperg2p/registry.py
++++ b/piperg2p/registry.py
+@@ -12,9 +12,11 @@ from .errors import UnsupportedPhonemeTypeError
+ @dataclass(frozen=True)
+ class FrontendSpec:
+     phoneme_type: PhonemeType
+-    backend_factory: Callable[[VoiceConfig], PhonemeBackend]
++    backend_factory: Callable[[VoiceConfig], PhonemeBackend] | None
+     encoder: EncoderStrategy
+     optional_extra: str | None = None
++    implemented: bool = True
++
+
+
+ def _text_backend(config: VoiceConfig) -> TextBackend:
+@@ -22,20 +24,31 @@ def _text_backend(config: VoiceConfig) -> TextBackend:
+     return TextBackend()
+
+
++
+ def _espeak_backend(config: VoiceConfig) -> EspeakBackend:
+     return EspeakBackend(vowel_clusters=config.vowel_clusters)
+
+
++
+ REGISTRY: dict[PhonemeType, FrontendSpec] = {
+     PhonemeType.TEXT: FrontendSpec(PhonemeType.TEXT, _text_backend, OrdinaryEncoder()),
+     PhonemeType.ESPEAK: FrontendSpec(PhonemeType.ESPEAK, _espeak_backend, OrdinaryEncoder()),
+-    PhonemeType.PINYIN: FrontendSpec(PhonemeType.PINYIN, _text_backend, PinyinEncoder(), "zh"),
+-    PhonemeType.HEBREW: FrontendSpec(PhonemeType.HEBREW, _text_backend, OrdinaryEncoder(), "he"),
+-    PhonemeType.JAPANESE: FrontendSpec(PhonemeType.JAPANESE, _text_backend, OrdinaryEncoder(), "ja"),
+-    PhonemeType.THAI: FrontendSpec(PhonemeType.THAI, _text_backend, OrdinaryEncoder(), "th"),
++    PhonemeType.PINYIN: FrontendSpec(
++        PhonemeType.PINYIN, None, PinyinEncoder(), "zh", False
++    ),
++    PhonemeType.HEBREW: FrontendSpec(
++        PhonemeType.HEBREW, None, OrdinaryEncoder(), "he", False
++    ),
++    PhonemeType.JAPANESE: FrontendSpec(
++        PhonemeType.JAPANESE, None, OrdinaryEncoder(), "ja", False
++    ),
++    PhonemeType.THAI: FrontendSpec(
++        PhonemeType.THAI, None, OrdinaryEncoder(), "th", False
++    ),
+ }
+
+
++
+ def spec_for(config: VoiceConfig) -> FrontendSpec:
+     try:
+         return REGISTRY[config.phoneme_type]
+diff --git a/pyproject.toml b/pyproject.toml
+index f4f25c4..d67cbca 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
+
+ [project]
+ name = "piperg2p"
+-version = "0.2.0"
++dynamic = ["version"]
+ description = "Independent Piper-compatible text/phoneme/id frontend for Piper ONNX voice configs"
+ readme = "README.md"
+ requires-python = ">=3.10"
+@@ -23,7 +23,7 @@ classifiers = [
+ ]
+
+ [project.optional-dependencies]
+-dev = ["pytest>=7", "pytest-cov>=4", "ruff>=0.6", "mypy>=1.10", "build>=1"]
++dev = ["pytest>=7", "pytest-cov>=4", "ruff>=0.6", "mypy>=1.10", "build>=1", "twine>=5"]
+ g2lex = ["g2lex>=0.1.8,<0.2"]
+ lexphon = ["lexphon>=0.2.3,<0.3"]
+ espeak-direct = [
+@@ -31,14 +31,10 @@ espeak-direct = [
+   "dlinfo>=1.2.1; sys_platform != 'win32' and sys_platform != 'android'",
+ ]
+ lexicons = ["lexphon>=0.2.3,<0.3"]
+-zh = []
+-ja = []
+-th = []
+-he = []
+-ar = []
+
+ [project.urls]
+-Repository = "https://github.com/example/piperg2p"
++Repository = "https://github.com/buchwandler/piperg2p"
++Homepage = "https://github.com/buchwandler/piperg2p"
+
+ [tool.setuptools.packages.find]
+ where = ["."]
+@@ -56,3 +52,6 @@ markers = [
+
+ [tool.ruff.lint]
+ ignore = ["PYI034", "UP037"]
++
++[tool.setuptools.dynamic]
++version = {attr = "piperg2p.__version__"}
+diff --git a/tests/test_benchmark_reference.py b/tests/test_benchmark_reference.py
+new file mode 100644
+index 0000000..a1e84a0
+--- /dev/null
++++ b/tests/test_benchmark_reference.py
+@@ -0,0 +1,59 @@
++from __future__ import annotations
++
++import json
++
++from benchmarks.benchmark_reference import _compare_cases, main
++
++
++def test_reference_case_comparison_reports_mismatches():
++    actual = [{"id": "case", "phoneme_type": "text", "sentences": []}]
++    expected = [{"id": "case", "phoneme_type": "text", "sentences": [{"ids": [1]}]}]
++    comparison = _compare_cases(actual, expected)
++    assert comparison[0]["status"] == "mismatch"
++
++
++def test_reference_runner_does_not_create_missing_expected_output(tmp_path, monkeypatch):
++    corpus = tmp_path / "corpus.json"
++    corpus.write_text(
++        json.dumps(
++            {
++                "profile": {"name": "test", "reference": "piper", "commit": "pinned"},
++                "cases": [{"id": "text", "phoneme_type": "text", "text": "a"}],
++            }
++        ),
++        encoding="utf-8",
++    )
++    config = tmp_path / "voice.json"
++    config.write_text(
++        json.dumps(
++            {
++                "num_symbols": 4,
++                "num_speakers": 1,
++                "audio": {"sample_rate": 22050},
++                "phoneme_type": "text",
++                "phoneme_id_map": {"_": 0, "^": 1, "$": 2, "a": 3},
++            }
++        ),
++        encoding="utf-8",
++    )
++    expected = tmp_path / "expected.json"
++    output = tmp_path / "report.json"
++    monkeypatch.setattr(
++        "sys.argv",
++        [
++            "benchmark_reference",
++            "--corpus",
++            str(corpus),
++            "--config",
++            str(config),
++            "--expected",
++            str(expected),
++            "--output",
++            str(output),
++        ],
++    )
++
++    assert main() == 1
++    assert not expected.exists()
++    report = json.loads(output.read_text(encoding="utf-8"))
++    assert report["comparison"]["status"] == "missing-expected"
+diff --git a/tests/test_config.py b/tests/test_config.py
+index 73696ee..978f672 100644
+--- a/tests/test_config.py
++++ b/tests/test_config.py
+@@ -4,9 +4,12 @@ from piperg2p import (
+     ConfigError,
+     PhonemeType,
+     PiperConfig,
++    PiperFrontend,
++    UnsupportedCompatibilityError,
+     UnsupportedPhonemeTypeError,
+     VoiceConfig,
+ )
++from piperg2p.registry import REGISTRY
+
+
+ def raw_config(**updates):
+@@ -52,6 +55,19 @@ def test_config_rejects_unknown_phoneme_type_and_bad_ids():
+     with pytest.raises(ConfigError, match="outside"):
+         VoiceConfig.from_dict(raw_config(num_symbols=3))
+
++def test_arabic_espeak_profile_is_explicitly_unsupported():
++    config = VoiceConfig.from_dict(
++        raw_config(phoneme_type="espeak", espeak={"voice": "ar"})
++    )
++    with pytest.raises(UnsupportedCompatibilityError, match="Arabic Piper eSpeak preprocessing"):
++        PiperFrontend(config)
++
++def test_deferred_frontends_are_not_advertised_as_implemented():
++    for phoneme_type in (PhonemeType.PINYIN, PhonemeType.HEBREW, PhonemeType.JAPANESE, PhonemeType.THAI):
++        spec = REGISTRY[phoneme_type]
++        assert not spec.implemented
++        assert spec.backend_factory is None
++
+
+ def test_vowel_clusters_validate_merged_symbol():
+     config = VoiceConfig.from_dict(raw_config(vowel_clusters=[["a", "b"]]))
+diff --git a/tests/test_lexicon_adapters.py b/tests/test_lexicon_adapters.py
+index ac75f08..98b38fc 100644
+--- a/tests/test_lexicon_adapters.py
++++ b/tests/test_lexicon_adapters.py
+@@ -3,6 +3,7 @@ from __future__ import annotations
+ import sys
+ import types
+ from pathlib import Path
++from typing import ClassVar
+
+ import pytest
+
+@@ -10,36 +11,70 @@ from piperg2p.errors import LexiconDependencyError, LexiconResourceError
+ from piperg2p.lexicons import G2LexLookup, LexphonLookup
+
+
+-def test_lexphon_is_lazy_and_uses_lexicon_only_batch_lookup(monkeypatch):
+-    calls: list[tuple[str, object]] = []
++def test_lexphon_resolves_installed_assets_and_uses_g2lex(monkeypatch, tmp_path):
++    paths = {
++        identifier: tmp_path / f"{identifier.replace(':', '-')}.g2lex"
++        for identifier in ("de-de:first", "de-de:second")
++    }
++    for path in paths.values():
++        path.write_bytes(b"placeholder")
++    calls: list[tuple[str, str | None]] = []
++    store_calls: list[str] = []
++
++    class DataStore:
++        def metadata(self, identifier):
++            store_calls.append(f"metadata:{identifier}")
++            return {
++                "id": identifier,
++                "language": "de-DE",
++                "kind": "pronunciation",
++                "phoneme_encoding": "espeak-ipa3",
++            }
++
++        def path(self, identifier):
++            store_calls.append(f"path:{identifier}")
++            return paths[identifier]
+
+-    class Runtime:
+-        def __init__(self, language, *, lexicons, store, fallback):
+-            calls.append((language, (tuple(lexicons), store, fallback)))
++    class Asset:
++        def __init__(self, path):
++            self.path = path
++            self.metadata = {
++                "id": next(identifier for identifier, value in paths.items() if str(value) == path),
++                "language": "de-DE",
++                "kind": "pronunciation",
++                "phoneme_encoding": "espeak-ipa3",
++            }
+
+-        def lookup_lexicon(self, word, *, tag=None):
+-            if word == "known":
+-                return types.SimpleNamespace(text="noʊn", source="lexphon", matched_key=word)
++        def lookup(self, word, *, tag=None):
++            calls.append((self.path, tag))
++            if self.path == str(paths["de-de:second"]) and word == "known":
++                return "kˈnoʊn"
+             return None
+
+-        def lookup_many(self, words, *, tag=None):
+-            return tuple(self.lookup_lexicon(word, tag=tag) for word in words)
+-
+         def close(self):
+-            calls.append(("close", None))
+-
+-    monkeypatch.setitem(sys.modules, "lexphon", types.SimpleNamespace(Phonemizer=Runtime))
+-    lookup = LexphonLookup("de-DE", ("first", "second"), store="store")
+-    assert calls == []
+-
+-    assert lookup.lookup("known").pronunciation == "noʊn"
+-    assert calls == [("de-DE", (("first", "second"), "store", None))]
+-    result = lookup.lookup_many(("known", "missing"))
+-    assert result[0].matched_key == "known"
+-    assert result[1] is None
++            pass
++
++    fake_lexphon = types.SimpleNamespace(DataStore=lambda: DataStore())
++    fake_g2lex = types.SimpleNamespace(open=lambda path: Asset(str(path)))
++    monkeypatch.setitem(sys.modules, "lexphon", fake_lexphon)
++    monkeypatch.setitem(sys.modules, "g2lex", fake_g2lex)
++
++    lookup = LexphonLookup("de-DE", tuple(paths), store=DataStore())
++    assert lookup.diagnostics.identifiers == tuple(paths)
++    result = lookup.lookup("known", tag="proper")
++    assert result is not None
++    assert result.pronunciation == "kˈnoʊn"
++    assert result.lexicon_id == "de-de:second"
++    assert result.source_encoding == "espeak-ipa3"
++    assert store_calls == [
++        "metadata:de-de:first",
++        "path:de-de:first",
++        "metadata:de-de:second",
++        "path:de-de:second",
++    ]
++    assert calls == [(str(paths["de-de:first"]), "proper"), (str(paths["de-de:second"]), "proper")]
+     lookup.close()
+     lookup.close()
+-    assert calls[-1] == ("close", None)
+
+
+ def test_lexphon_missing_dependency_is_actionable(monkeypatch):
+@@ -49,13 +84,13 @@ def test_lexphon_missing_dependency_is_actionable(monkeypatch):
+
+
+ def test_lexphon_resource_errors_are_not_misses(monkeypatch):
+-    class Runtime:
+-        def __init__(self, *args, **kwargs):
++    class DataStore:
++        def metadata(self, identifier):
+             raise RuntimeError("not installed")
+
+-    monkeypatch.setitem(sys.modules, "lexphon", types.SimpleNamespace(Phonemizer=Runtime))
+-    with pytest.raises(LexiconResourceError, match="Could not open Lexphon"):
+-        LexphonLookup("en-us", ("missing",)).lookup("word")
++    monkeypatch.setitem(sys.modules, "lexphon", types.SimpleNamespace(DataStore=DataStore))
++    with pytest.raises(LexiconResourceError, match="Could not resolve Lexphon"):
++        LexphonLookup("en-us", ("missing",), store=DataStore()).lookup("word")
+
+
+ def test_g2lex_preserves_asset_order_and_forwards_tag(monkeypatch, tmp_path):
+@@ -93,6 +128,60 @@ def test_g2lex_preserves_asset_order_and_forwards_tag(monkeypatch, tmp_path):
+     assert assets[second.name].closed
+
+
++def test_g2lex_existing_asset_without_dependency_has_dependency_error(monkeypatch, tmp_path):
++    asset = tmp_path / "existing.g2lex"
++    asset.write_bytes(b"placeholder")
++    monkeypatch.setitem(sys.modules, "g2lex", None)
++    with pytest.raises(LexiconDependencyError, match=r"piperg2p\[g2lex\]"):
++        G2LexLookup((asset,)).lookup("word")
++
++
++def test_g2lex_recognizes_modern_encoding_and_provenance(monkeypatch, tmp_path):
++    asset_path = tmp_path / "modern.g2lex"
++    asset_path.write_bytes(b"placeholder")
++
++    class Asset:
++        metadata: ClassVar[dict[str, str]] = {
++            "id": "en-us:espeak-piper",
++            "language": "en-US",
++            "kind": "pronunciation",
++            "phoneme_encoding": "espeak-ipa3",
++            "data_version": "2026.1",
++            "producer": "g2lex-data",
++            "transform_id": "piper-ipa3",
++            "generator": "espeak-ng-1",
++        }
++
++        def lookup(self, word, *, tag=None):
++            return "tʃ" if word == "church" else None
++
++        def close(self):
++            pass
++
++    monkeypatch.setitem(sys.modules, "g2lex", types.SimpleNamespace(open=lambda path: Asset()))
++    with G2LexLookup((asset_path,), language="en-us") as lookup:
++        pronunciation = lookup.lookup("church")
++        assert pronunciation is not None
++        assert pronunciation.source_encoding == "espeak-ipa3"
++        assert pronunciation.provenance is not None
++        assert pronunciation.provenance.data_version == "2026.1"
++        assert pronunciation.provenance.transform == "piper-ipa3"
++
++
++def test_g2lex_rejects_unsupported_modern_encoding(monkeypatch, tmp_path):
++    asset_path = tmp_path / "unsupported.g2lex"
++    asset_path.write_bytes(b"placeholder")
++
++    class Asset:
++        metadata: ClassVar[dict[str, str]] = {"kind": "pronunciation", "phoneme_encoding": "arpabet"}
++
++        def close(self):
++            pass
++
++    monkeypatch.setitem(sys.modules, "g2lex", types.SimpleNamespace(open=lambda path: Asset()))
++    with pytest.raises(LexiconResourceError, match="unsupported phoneme encoding"):
++        G2LexLookup((asset_path,)).lookup("word")
++
+ def test_g2lex_missing_asset_has_focused_error():
+     with pytest.raises(LexiconResourceError, match="does not exist"):
+         G2LexLookup(("missing.g2lex",)).lookup("word")
+diff --git a/tests/test_lexicon_overlay_extra.py b/tests/test_lexicon_overlay_extra.py
+index b61957f..cd5a8cc 100644
+--- a/tests/test_lexicon_overlay_extra.py
++++ b/tests/test_lexicon_overlay_extra.py
+@@ -72,6 +72,25 @@ def test_lexicon_pronunciation_is_normalized_to_nfd():
+     )
+     assert groups == [["e", "\u0301"]]
+
++def test_ipa3_lexicon_hit_preserves_raw_symbol_stream():
++    class IPA3Lookup:
++        @property
++        def diagnostics(self):
++            return LexiconDiagnostics(True, "fake", "en-us", ("fake",), "piper-espeak-frozen")
++
++        def lookup_many(self, words, *, tag=None):
++            return tuple(
++                LexiconPronunciation("é", "fake", matched_key=word, source_encoding="espeak-ipa3")
++                for word in words
++            )
++
++    groups = compose_lexicon_overlay(
++        parse_raw_blocks("known"),
++        IPA3Lookup(),
++        lambda text: [],
++    )
++    assert groups == [["é"]]
++
+
+ def test_vowel_clusters_merge_after_raw_and_lexicon_composition():
+     lookup = FakeLookup({"known": "a"})
+diff --git a/tools/check_release_artifacts.py b/tools/check_release_artifacts.py
+new file mode 100644
+index 0000000..d259dea
+--- /dev/null
++++ b/tools/check_release_artifacts.py
+@@ -0,0 +1,55 @@
++"""Check that release artifacts contain the intended package and metadata."""
++
++from __future__ import annotations
++
++import argparse
++import tarfile
++import zipfile
++from pathlib import Path
++
++
++def _wheel_version(path: Path) -> str:
++    with zipfile.ZipFile(path) as archive:
++        metadata = next(
++            name for name in archive.namelist() if name.endswith(".dist-info/METADATA")
++        )
++        rows = archive.read(metadata).decode("utf-8").splitlines()
++    return next(row.removeprefix("Version: ") for row in rows if row.startswith("Version: "))
++
++
++def _check_wheel(path: Path) -> None:
++    with zipfile.ZipFile(path) as archive:
++        names = archive.namelist()
++    if not any(name.startswith("piperg2p/") and name.endswith(".py") for name in names):
++        raise SystemExit(f"wheel does not contain piperg2p Python files: {path}")
++    forbidden = ("tests/", "benchmarks/", ".github/")
++    included = [name for name in names if name.startswith(forbidden)]
++    if included:
++        raise SystemExit(f"wheel contains excluded files: {included}")
++    _wheel_version(path)
++
++
++def _check_sdist(path: Path) -> None:
++    with tarfile.open(path, "r:gz") as archive:
++        names = archive.getnames()
++    required = ("pyproject.toml", "README.md", "LICENSE", "piperg2p/__init__.py")
++    if not all(any(name.endswith(value) for name in names) for value in required):
++        raise SystemExit(f"sdist is missing a required project file: {path}")
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("dist", type=Path)
++    args = parser.parse_args()
++    wheels = sorted(args.dist.glob("*.whl"))
++    sdists = sorted(args.dist.glob("*.tar.gz"))
++    if len(wheels) != 1 or len(sdists) != 1:
++        raise SystemExit("dist must contain exactly one wheel and one sdist")
++    _check_wheel(wheels[0])
++    _check_sdist(sdists[0])
++    print(f"checked {wheels[0].name} and {sdists[0].name}")
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())

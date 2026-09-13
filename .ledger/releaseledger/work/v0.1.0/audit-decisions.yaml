@@ -1,0 +1,213 @@
+rows:
+  - sha: 5f8a77a166edf61e81a575be2634296e103905c9
+    inspected: true
+    inspected_paths:
+      [
+        README.md,
+        piperg2p/__init__.py,
+        piperg2p/config.py,
+        piperg2p/codec.py,
+        piperg2p/frontend.py,
+        piperg2p/backends/espeak/backend.py,
+        piperg2p/backends/text.py,
+        tests/test_config.py,
+        tests/test_codec.py,
+        tests/test_raw_frontend.py,
+      ]
+    observed_behavior: Established the standalone voice-config-driven frontend with text and eSpeak backends, Piper ID encoding, diagnostics, and initial regression tests.
+    public_impact: public
+    decision: accepted
+  - sha: 3064cf6b53d152227937141dff61e10656e4dad3
+    inspected: true
+    inspected_paths:
+      [
+        piperg2p/frontend.py,
+        piperg2p/raw_blocks.py,
+        piperg2p/lexicons/base.py,
+        piperg2p/lexicons/g2lex.py,
+        piperg2p/lexicons/lexphon.py,
+        piperg2p/lexicons/overlay.py,
+        docs/lexicons.md,
+        tests/test_lexicon_adapters.py,
+        tests/test_lexicon_overlay.py,
+      ]
+    observed_behavior: Added opt-in G2Lex and Lexphon adapters, pronunciation overlays, raw-block precedence, encoding conversion, and supporting documentation and tests.
+    public_impact: public
+    decision: accepted
+  - sha: e08deb16fd48b45356606609b4ebb7ce7c221465
+    inspected: true
+    inspected_paths:
+      [
+        piperg2p/config.py,
+        piperg2p/frontend.py,
+        piperg2p/lexicons/base.py,
+        piperg2p/lexicons/g2lex.py,
+        piperg2p/lexicons/lexphon.py,
+        piperg2p/lexicons/overlay.py,
+        piperg2p/registry.py,
+        tools/check_release_artifacts.py,
+        tests/test_lexicon_adapters.py,
+      ]
+    observed_behavior: Hardened lexicon resolution, overlay validation, configuration handling, and compatibility and benchmark checks across supported profiles.
+    public_impact: public
+    decision: accepted
+  - sha: 797d2054135318a02c394cc6462c67f43797e160
+    inspected: true
+    inspected_paths:
+      [
+        piperg2p/__init__.py,
+        pyproject.toml,
+        tests/test_version.py,
+        tools/check_release_artifacts.py,
+      ]
+    observed_behavior: Made the package version derive from setuptools SCM metadata and added version and release-artifact checks.
+    public_impact: public
+    decision: accepted
+  - sha: baf294f3ee87a599ff8cafea124e8ab6991c6670
+    inspected: true
+    inspected_paths:
+      [
+        .pre-commit-config.yaml,
+        piperg2p/frontend.py,
+        piperg2p/config.py,
+        piperg2p/codec.py,
+        piperg2p/registry.py,
+        tests/test_config.py,
+        tools/check_release_artifacts.py,
+      ]
+    observed_behavior: Applied repository-wide formatting and consistency updates across runtime, benchmarks, documentation, and tests, and added pre-commit configuration without changing intended product semantics.
+    public_impact: internal
+    decision: internal
+    notes: Tooling and normalization maintenance; no separate public release note.
+  - sha: eb23e1501ad8ea427a673c8d910e7854c24973a3
+    inspected: true
+    inspected_paths:
+      [
+        .github/workflows/codecov.yml,
+        .github/workflows/pre-commit.yml,
+        .github/workflows/python-publish.yml,
+      ]
+    observed_behavior: Added automated coverage, pre-commit, test, and package publication workflows.
+    public_impact: internal
+    decision: internal
+    notes: Repository automation only.
+  - sha: 3b30ded8933812a27df72ff9d09af6fc6a30d808
+    inspected: true
+    inspected_paths: [README.md]
+    observed_behavior: Documented batch processing usage in the project README.
+    public_impact: docs
+    decision: accepted
+  - sha: 2fc2f736fa8e070dec2e540c0792980eebc212de
+    inspected: true
+    inspected_paths:
+      [
+        piperg2p/api.py,
+        piperg2p/cache.py,
+        piperg2p/language_routing.py,
+        piperg2p/markers.py,
+        piperg2p/spans.py,
+        piperg2p/stress.py,
+        piperg2p/types.py,
+        examples/README.md,
+        tests/test_annotations.py,
+        tests/test_cache.py,
+        tests/test_language_routing.py,
+        tests/test_markers.py,
+        tests/test_stress.py,
+      ]
+    observed_behavior: Expanded the sibling-style API with reusable facades, bounded caching, source-aligned overrides and annotations, evidence-based language routing, marker and stress helpers, and executable examples and benchmarks.
+    public_impact: public
+    decision: accepted
+  - sha: bfe84b160635a1b4583b9cbd8303cdd8a3c81760
+    inspected: true
+    inspected_paths:
+      [
+        piperg2p/api.py,
+        piperg2p/cache.py,
+        piperg2p/language_routing.py,
+        piperg2p/markers.py,
+        piperg2p/spans.py,
+        piperg2p/stress.py,
+        piperg2p/types.py,
+        tests/test_annotations.py,
+        tests/test_public_api_consistency.py,
+      ]
+    observed_behavior: Applied formatting and consistency updates to the API, benchmark, example, and test additions without introducing a distinct product capability.
+    public_impact: internal
+    decision: internal
+    notes: Tooling and consistency maintenance; no separate public release note.
+  - sha: 5d05d1c9532d8e7a0dcceb61cf623635aca7cd14
+    inspected: true
+    inspected_paths: [.github/workflows/test.yml]
+    observed_behavior: Adjusted CI test workflow configuration for reliable execution.
+    public_impact: internal
+    decision: internal
+    notes: Repository automation only.
+  - sha: aeba14b9fe785b7a60a9b08211ccdde7b6f344fb
+    inspected: true
+    inspected_paths:
+      [
+        .github/workflows/python-publish.yml,
+        .github/workflows/test.yml,
+        docs/contributing.md,
+      ]
+    observed_behavior: Aligned CI, publication workflow, and contribution instructions with repository tooling.
+    public_impact: internal
+    decision: internal
+    notes: Repository automation and contributor-process maintenance.
+  - sha: 20bd516e14727b7330117613f34d965a3ef90e66
+    inspected: true
+    inspected_paths:
+      [
+        pyproject.toml,
+        README.md,
+        docs/installation.md,
+        docs/quickstart.md,
+        tests/test_dependency_contract.py,
+        tests/test_semantic_ownership.py,
+        tools/check_release_artifacts.py,
+      ]
+    observed_behavior: Removed runtime Numeralform coupling, clarified optional semantic preparation boundaries, and strengthened dependency, ownership, and release-artifact checks.
+    public_impact: public
+    decision: accepted
+  - sha: 4cbc65457dbf009ee9983ac58b005d5bcc785ba6
+    inspected: true
+    inspected_paths:
+      [
+        README.md,
+        docs/api/core.md,
+        docs/index.md,
+        docs/installation.md,
+        docs/quickstart.md,
+        docs/raw-phonemes.md,
+      ]
+    observed_behavior: Documented prepared-text usage and explicit Spokenform composition across the API, installation, quickstart, and raw-phoneme guides.
+    public_impact: docs
+    decision: accepted
+  - sha: ecb05c31b763bd3d5835c508a47556a9e19c3833
+    inspected: true
+    inspected_paths: [docs/installation.md, docs/raw-phonemes.md]
+    observed_behavior: Cleaned documentation formatting after linting.
+    public_impact: internal
+    decision: internal
+    notes: Documentation formatting only.
+  - sha: 5db1eaf2dbca0bbe160560e47f0e128cb9015491
+    inspected: true
+    inspected_paths:
+      [tests/test_clause_backend.py, tests/test_real_optional_integration.py]
+    observed_behavior: Adjusted optional eSpeak integration tests for the supported test environment.
+    public_impact: internal
+    decision: internal
+    notes: Test-environment maintenance only.
+  - sha: 882bbcbbec693f7580467fc26023146e03c006f7
+    inspected: true
+    inspected_paths:
+      [
+        benchmarks/reference/espeak.py,
+        piperg2p/backends/espeak/cli.py,
+        tests/test_clause_backend.py,
+        tests/test_espeak_benchmark.py,
+      ]
+    observed_behavior: Corrected eSpeak CLI clause handling and benchmark integration, with regression coverage for the corrected behavior.
+    public_impact: public
+    decision: accepted

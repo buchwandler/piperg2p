@@ -1,0 +1,57 @@
+ benchmarks/reference/espeak.py  | 2 +-
+ piperg2p/backends/espeak/cli.py | 5 ++++-
+ tests/test_clause_backend.py    | 1 +
+ tests/test_espeak_benchmark.py  | 1 +
+ 4 files changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/benchmarks/reference/espeak.py b/benchmarks/reference/espeak.py
+index cf8a8ed..33caf8e 100644
+--- a/benchmarks/reference/espeak.py
++++ b/benchmarks/reference/espeak.py
+@@ -49,7 +49,7 @@ class EspeakReference:
+         try:
+             process = subprocess.run(
+                 command,
+-                input=text,
++                input=text if text.endswith("\n") else f"{text}\n",
+                 encoding="utf-8",
+                 errors="strict",
+                 capture_output=True,
+diff --git a/piperg2p/backends/espeak/cli.py b/piperg2p/backends/espeak/cli.py
+index 558bf16..2d10851 100644
+--- a/piperg2p/backends/espeak/cli.py
++++ b/piperg2p/backends/espeak/cli.py
+@@ -40,7 +40,10 @@ class EspeakCliBackend:
+         try:
+             process = subprocess.run(
+                 [self.executable or "", "-q", "--ipa=3", "-v", voice, "--stdin"],
+-                input=text,
++                # eSpeak only flushes the final clause completely when stdin
++                # contains a line terminator. Without one, some versions
++                # return a truncated pronunciation for the final word.
++                input=text if text.endswith("\n") else f"{text}\n",
+                 encoding="utf-8",
+                 errors="strict",
+                 capture_output=True,
+diff --git a/tests/test_clause_backend.py b/tests/test_clause_backend.py
+index 4f2218b..786cace 100644
+--- a/tests/test_clause_backend.py
++++ b/tests/test_clause_backend.py
+@@ -61,6 +61,7 @@ def test_cli_backend_uses_utf8_and_reports_best_effort(monkeypatch):
+     backend = EspeakCliBackend(executable=executable)
+     assert backend.phonemize("hé", voice="en-us") == [["h", "ɛ", "l", "ə"]]
+     assert calls[0][1]["encoding"] == "utf-8"
++    assert calls[0][1]["input"] == "hé\n"
+     assert backend.diagnostics.parity == "best-effort"
+
+
+diff --git a/tests/test_espeak_benchmark.py b/tests/test_espeak_benchmark.py
+index 6e041b1..ca9b70a 100644
+--- a/tests/test_espeak_benchmark.py
++++ b/tests/test_espeak_benchmark.py
+@@ -19,6 +19,7 @@ def test_reference_uses_independent_ipa3_command(monkeypatch):
+     result = reference.run("hello", voice="en-us")
+     assert any("--ipa=3" in command for command, _ in calls)
+     assert any("--stdin" in command for command, _ in calls)
++    assert calls[-1][1]["input"] == "hello\n"
+     assert result.raw == "həˈləʊ"

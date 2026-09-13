@@ -1,0 +1,2055 @@
+ .github/workflows/test.yml              |  27 +++++++
+ README.md                               |   4 +
+ benchmarks/benchmark_reference.py       |  70 ++++++++++++++++-
+ docs/api/backends.md                    |   6 +-
+ docs/api/core.md                        |  19 ++++-
+ docs/compatibility.md                   |   1 +
+ docs/espeak.md                          |   4 +
+ docs/index.md                           |   3 +
+ docs/installation.md                    |  10 +++
+ docs/lexicons.md                        |  75 ++++++++++++++++++
+ docs/provenance.md                      |   6 ++
+ piperg2p/__init__.py                    |   8 ++
+ piperg2p/backends/espeak/backend.py     |  17 +++--
+ piperg2p/backends/espeak/cli.py         |   2 +
+ piperg2p/backends/espeak/discovery.py   |  43 ++++++++++-
+ piperg2p/backends/espeak/native.py      |  16 ++--
+ piperg2p/diagnostics.py                 |   5 ++
+ piperg2p/errors.py                      |  16 ++++
+ piperg2p/frontend.py                    |  77 +++++++++++++++++--
+ piperg2p/lexicons/__init__.py           |  11 +++
+ piperg2p/lexicons/base.py               |  37 +++++++++
+ piperg2p/lexicons/g2lex.py              | 122 ++++++++++++++++++++++++++++++
+ piperg2p/lexicons/lexphon.py            | 108 ++++++++++++++++++++++++++
+ piperg2p/lexicons/overlay.py            | 114 ++++++++++++++++++++++++++++
+ piperg2p/lexicons/spans.py              |  63 ++++++++++++++++
+ piperg2p/raw_blocks.py                  |  86 +++++++++++++++++----
+ pyproject.toml                          |   8 +-
+ tests/test_clause_backend.py            |  13 ++--
+ tests/test_espeak_exact_contract.py     |  79 +++++++++++++++++++
+ tests/test_lexicon_adapters.py          |  98 ++++++++++++++++++++++++
+ tests/test_lexicon_overlay.py           | 130 ++++++++++++++++++++++++++++++++
+ tests/test_lexicon_overlay_extra.py     |  84 +++++++++++++++++++++
+ tests/test_lexicon_spans.py             |  21 ++++++
+ tests/test_raw_spacing.py               |  37 +++++++++
+ tests/test_real_optional_integration.py |  53 +++++++++++++
+ 35 files changed, 1425 insertions(+), 48 deletions(-)
+
+diff --git a/.github/workflows/test.yml b/.github/workflows/test.yml
+index 26e7a56..356bd50 100644
+--- a/.github/workflows/test.yml
++++ b/.github/workflows/test.yml
+@@ -21,3 +21,30 @@ jobs:
+       - run: python -m pip install -e '.[dev]'
+       - run: pytest -q
+       - run: python -m build
++
++  espeak-exact:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with:
++          python-version: '3.12'
++      - run: sudo apt-get update
++      - run: sudo apt-get install --yes espeak-ng libespeak-ng-dev
++      - run: python -m pip install --upgrade pip
++      - run: python -m pip install -e '.[dev]'
++      - run: pytest -q -m espeak tests/test_clause_backend.py tests/test_espeak_exact_contract.py tests/test_real_optional_integration.py
++      - run: ruff check .
++      - run: python -m build
++
++  lexicons:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with:
++          python-version: '3.12'
++      - run: python -m pip install --upgrade pip
++      - run: python -m pip install -e '.[dev,lexicons]'
++      - run: pytest -q tests/test_lexicon_adapters.py tests/test_lexicon_spans.py tests/test_lexicon_overlay.py tests/test_lexicon_overlay_extra.py tests/test_real_optional_integration.py
++      - run: ruff check .
+diff --git a/README.md b/README.md
+index e067ddb..acdf27b 100644
+--- a/README.md
++++ b/README.md
+@@ -35,6 +35,10 @@ for sentence in result.sentences:
+
+ The configured `phoneme_id_map` is authoritative. `result.ids` is a convenience flattening of sentence IDs. Model inference should normally consume each `sentence.ids` separately.
+
++## Lexicon-first mode
++
++Lexicon support is an opt-in overlay on the existing eSpeak frontend. Install `piperg2p[lexphon]` for managed Lexphon identifiers or `piperg2p[g2lex]` for explicit local `.g2lex` files. Raw `[[...]]` blocks have precedence, lexicon misses use PiperG2P's eSpeak backend, and no dictionary downloads occur implicitly. See [docs/lexicons.md](docs/lexicons.md).
++
+ ## Compatibility
+
+ Compatibility is measured against pinned reference profiles, not a moving upstream branch. See [docs/compatibility.md](docs/compatibility.md), [docs/espeak.md](docs/espeak.md), and [docs/provenance.md](docs/provenance.md).
+diff --git a/benchmarks/benchmark_reference.py b/benchmarks/benchmark_reference.py
+index 79c87a1..54d8709 100644
+--- a/benchmarks/benchmark_reference.py
++++ b/benchmarks/benchmark_reference.py
+@@ -1,18 +1,82 @@
+-"""Inspect the pinned Phase 1 corpus without importing Piper at runtime."""
++"""Execute PiperG2P compatibility and lexicon-overlay benchmark corpora."""
+
+ from __future__ import annotations
+
+ import argparse
+ import json
+ from pathlib import Path
++from typing import Any
++
++from piperg2p import PiperFrontend, VoiceConfig
++from piperg2p.lexicons import G2LexLookup
++
++
++def _run_case(frontend: PiperFrontend, case: dict[str, Any]) -> dict[str, Any]:
++    result = frontend.phonemize(case["text"])
++    return {
++        "id": case["id"],
++        "status": "pass",
++        "phoneme_type": case.get("phoneme_type"),
++        "sentences": [
++            {"phonemes": sentence.phoneme_string, "ids": list(sentence.ids)}
++            for sentence in result.sentences
++        ],
++        "diagnostics": {
++            "backend": result.diagnostics.backend if result.diagnostics else None,
++            "lexicon": (
++                result.diagnostics.lexicon.implementation
++                if result.diagnostics and result.diagnostics.lexicon
++                else None
++            ),
++        },
++    }
+
+
+ def main() -> int:
+-    parser = argparse.ArgumentParser()
++    parser = argparse.ArgumentParser(description=__doc__)
+     parser.add_argument("--corpus", type=Path, default=Path(__file__).parent / "data" / "core.json")
++    parser.add_argument("--config", type=Path, help="Voice config used to execute compatible corpus cases")
++    parser.add_argument("--mode", choices=("reference", "overlay"), default="reference")
++    parser.add_argument("--lexicon", action="append", default=[], help="Direct .g2lex asset for overlay mode")
++    parser.add_argument("--output", type=Path)
+     args = parser.parse_args()
+     corpus = json.loads(args.corpus.read_text(encoding="utf-8"))
+-    print(json.dumps({"profile": corpus["profile"], "cases": len(corpus["cases"])}, indent=2))
++    profile = corpus["profile"]
++    report: dict[str, Any] = {
++        "mode": args.mode,
++        "parity": (
++            "piper-eSpeak-only compatibility target"
++            if args.mode == "reference"
++            else "PiperG2P-owned lexicon overlay extension"
++        ),
++        "profile": profile,
++        "cases": [],
++    }
++    if args.config is None:
++        report["status"] = "metadata-only"
++        report["case_count"] = len(corpus["cases"])
++    else:
++        config = VoiceConfig.from_json(args.config)
++        lookup = G2LexLookup(args.lexicon, language=config.espeak_voice) if args.mode == "overlay" else None
++        try:
++            frontend = PiperFrontend(config, lexicon_backend=lookup) if lookup is not None else PiperFrontend(config)
++            try:
++                for case in corpus["cases"]:
++                    if case.get("phoneme_type") != config.phoneme_type.value:
++                        report["cases"].append({"id": case["id"], "status": "skipped"})
++                    else:
++                        report["cases"].append(_run_case(frontend, case))
++            finally:
++                frontend.close()
++        finally:
++            if lookup is not None:
++                lookup.close()
++        report["status"] = "executed"
++    rendered = json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True)
++    if args.output:
++        args.output.write_text(rendered + "\n", encoding="utf-8")
++    else:
++        print(rendered)
+     return 0
+
+
+diff --git a/docs/api/backends.md b/docs/api/backends.md
+index 0b14aca..1107167 100644
+--- a/docs/api/backends.md
++++ b/docs/api/backends.md
+@@ -1,3 +1,7 @@
+ # Backend API
+
+-`TextBackend` handles codepoint phonemes. `EspeakBackend` selects native or CLI implementations. `NativeEspeakProvider` exposes clause results for testable composition. `PhonemeBackend` is the protocol used for custom backend injection.
++`EspeakBackend(mode="auto")` selects an exact native clause provider only when the public terminator API is available. Otherwise it reports `terminator API unavailable` and falls back to the CLI with best-effort parity. `mode="native"` fails instead of silently selecting an inexact provider. `mode="cli"` explicitly selects the best-effort subprocess backend.
++
++Discovery order is explicit constructor or environment override, the optional modern eSpeak loader, system eSpeak NG, and legacy system eSpeak. `BackendDiagnostics.discovery_source` records the selected source.
++
++The native binding requests synchronous text conversion using the public eSpeak API value `AUDIO_OUTPUT_SYNCHRONOUS = 2`; it does not request playback.
+diff --git a/docs/api/core.md b/docs/api/core.md
+index b317201..b80463a 100644
+--- a/docs/api/core.md
++++ b/docs/api/core.md
+@@ -1,5 +1,20 @@
+ # Core API
+
+-Public entry points include `PiperFrontend`, `VoiceConfig`, `PhonemeType`, `encode_phonemes`, `MissingPhonemePolicy`, `PhonemizeResult`, `PhonemeSentence`, and `EncodeResult`.
++`PiperFrontend` accepts a validated `VoiceConfig` and optional runtime lexicon settings:
+
+-Frontend results are immutable tuples. `PhonemizeResult.sentences` is the model-oriented view. The flattened `.phonemes` and `.ids` properties are convenience views.
++```python
++PiperFrontend(
++    config,
++    backend=None,
++    missing=MissingPhonemePolicy.WARN,
++    lexicons=(),
++    lexicon_store=None,
++    lexicon_backend=None,
++)
++```
++
++`lexicons` and `lexicon_backend` are mutually exclusive. Lexicon overlays currently apply only to `phoneme_type="espeak"`. `VoiceConfig` is not modified by runtime lexicon selection, and its `phoneme_id_map` remains authoritative.
++
++Stable lexicon contracts are available from `piperg2p.lexicons`: `PronunciationLookup`, `LexiconPronunciation`, `LexiconDiagnostics`, `LexphonLookup`, and `G2LexLookup`.
++
++`FrontendDiagnostics.lexicon` is `None` when disabled. When enabled it identifies the implementation, language, identifiers, and override compatibility label.
+diff --git a/docs/compatibility.md b/docs/compatibility.md
+index 26e4bd2..f8b9c0e 100644
+--- a/docs/compatibility.md
++++ b/docs/compatibility.md
+@@ -9,5 +9,6 @@ The primary target is the Python Piper voice behavior at pinned reference commit
+ | eSpeak CLI | executable required | best-effort |
+ | Raw blocks | yes, eSpeak only | reference-tested foundation |
+ | Pinyin, Japanese, Thai, Hebrew, Arabic | no provider in Phase 1 | unsupported or deferred |
++| Lexphon/G2Lex overlay | opt-in | override extension, not upstream exact parity |
+
+ The pinned Phase 1 corpus metadata is in `benchmarks/data/core.json`. It is not a golden output and cannot silently refresh. Exactness claims require reference output and dependency metadata.
+diff --git a/docs/espeak.md b/docs/espeak.md
+index cbdf620..e84f020 100644
+--- a/docs/espeak.md
++++ b/docs/espeak.md
+@@ -1,9 +1,13 @@
+ # eSpeak backends
+
++
++Auto mode rejects a native library without `espeak_TextToPhonemesWithTerminator` and falls back to CLI with a distinct `terminator API unavailable` diagnostic. This prevents an old native library from silently losing Piper clause boundaries.
+ `EspeakBackend` supports `auto`, `native`, and `cli` modes. Auto mode attempts the native shared library first and falls back to the CLI with a `BackendFallbackWarning`. Native mode fails clearly when the library or exact clause API is unavailable. CLI mode is explicitly `best-effort`.
+
+ Native conversion uses the public eSpeak NG functions `espeak_Initialize`, `espeak_SetVoiceByName`, and `espeak_TextToPhonemesWithTerminator`. The process-wide native manager holds an `RLock` across voice selection and complete clause conversion because eSpeak has mutable global state.
+
++
++Discovery prefers explicit overrides, the optional modern eSpeak loader, system eSpeak NG, and legacy eSpeak. The selected source is exposed as `BackendDiagnostics.discovery_source`.
+ `BackendDiagnostics` reports the requested mode, implementation, executable, library, data path, version, exact clause support, fallback reason, and parity label. eSpeak data discovery never imports Piper.
+
+ Clause transformations are pure Python around a clause provider. They remove language-switch markers, retain comma, colon, and semicolon punctuation with a following space, preserve sentence punctuation, apply NFD after assembly, merge configured vowel clusters longest-first, and emit residual final text.
+diff --git a/docs/index.md b/docs/index.md
+index ef9ecdc..2a58568 100644
+--- a/docs/index.md
++++ b/docs/index.md
+@@ -5,6 +5,9 @@
+ - [Voice configuration](voice-config.md)
+ - [Encoding](encoding.md)
+ - [eSpeak backends](espeak.md)
++- [Pronunciation lexicons](lexicons.md)
++- [Core API](api/core.md)
++- [Backend API](api/backends.md)
+ - [Raw phonemes](raw-phonemes.md)
+ - [Phoneme types](phoneme-types.md)
+ - [Compatibility policy](compatibility.md)
+diff --git a/docs/installation.md b/docs/installation.md
+index 2400523..7aae115 100644
+--- a/docs/installation.md
++++ b/docs/installation.md
+@@ -9,3 +9,13 @@ pip install .
+ The `dev` extra provides pytest, coverage, ruff, mypy, and build tooling. eSpeak NG is a system dependency for eSpeak voices. Its executable, shared library, and data directory can be selected with constructor arguments or `PIPERG2P_ESPEAK_EXECUTABLE`, `PIPERG2P_ESPEAK_LIBRARY`, and `PIPERG2P_ESPEAK_DATA`.
+
+ No frontend downloads models or makes network requests during phonemization.
++
++Optional lexicon adapters are installed separately:
++
++```bash
++pip install 'piperg2p[lexphon]'  # managed Lexphon identifiers
++pip install 'piperg2p[g2lex]'     # explicit local .g2lex files
++pip install 'piperg2p[espeak-direct]'  # packaged modern eSpeak loader
++```
++
++These packages are not imported or required for core/text/eSpeak-only use.
+diff --git a/docs/lexicons.md b/docs/lexicons.md
+new file mode 100644
+index 0000000..3f7a204
+--- /dev/null
++++ b/docs/lexicons.md
+@@ -0,0 +1,75 @@
++# Pronunciation lexicons
++
++`piperg2p` has two runtime modes for eSpeak voices:
++
++- **eSpeak-only**, the default, preserves the normal Piper-compatible eSpeak route.
++- **Lexicon-first**, an opt-in overlay that uses a pronunciation lexicon for source words and sends unresolved source intervals to PiperG2P's own `EspeakBackend`.
++
++Lexicon-first is a PiperG2P extension. It intentionally overrides selected eSpeak pronunciations and is not upstream Piper exact parity.
++
++## Managed Lexphon assets
++
++Install the optional dependency:
++
++```bash
++pip install 'piperg2p[lexphon]'
++```
++
++Then select installed identifiers at runtime:
++
++```python
++from piperg2p import PiperFrontend
++
++frontend = PiperFrontend.from_config(
++    "voice.onnx.json",
++    lexicons=("de-de:espeak",),
++)
++```
++
++Lexphon is used with `fallback=None`. It performs lexicon-only lookup. A miss is passed to PiperG2P's eSpeak backend, not to Lexphon's generic eSpeak provider. Data is never downloaded implicitly. Install and verify assets through Lexphon's data tooling before inference.
++
++The lexicon language defaults to `VoiceConfig.espeak_voice`.
++
++## Direct local G2Lex assets
++
++Install the separate runtime and pass explicit files:
++
++```bash
++pip install 'piperg2p[g2lex]'
++```
++
++```python
++from piperg2p import PiperFrontend
++from piperg2p.lexicons import G2LexLookup
++
++lookup = G2LexLookup(["./build/custom.g2lex"], language="de-DE")
++frontend = PiperFrontend.from_config(
++    "voice.onnx.json",
++    lexicon_backend=lookup,
++)
++```
++
++The direct adapter uses exact keys and configured path order. It is intended for local development before assets are installed into Lexphon. Production profile and encoding normalization belongs in Lexphon. Direct V1 assets must use IPA/Unicode IPA metadata when that metadata is present.
++
++Injected adapters are owned by the caller. Adapters created internally from `lexicons=` are closed by `PiperFrontend`.
++
++## Precedence and composition
++
++The precedence order is:
++
++1. Explicit `[[ raw phonemes ]]` blocks.
++2. Configured lexicons, in order.
++3. PiperG2P eSpeak fallback for unresolved source intervals.
++4. The configured model missing-symbol policy during ID encoding.
++
++Words are scanned without discarding punctuation or source whitespace. Lookup is batched per ordinary source segment. Unresolved intervals are coalesced so eSpeak retains context, while explicit raw and lexical segments remain in source order. Final phonemes use NFD normalization and vowel-cluster merging before voice-specific ID encoding.
++
++A lexicon hit containing a symbol absent from the voice map is not silently replaced by eSpeak. `error`, `warn`, and `ignore` follow the normal encoder policy.
++
++## Diagnostics and reproducibility
++
++`result.diagnostics.lexicon` reports whether the overlay is enabled, its implementation, language, identifiers, and compatibility label. Asset provenance and the eSpeak version used to generate or consume an asset should be recorded by the asset producer. A frozen eSpeak-derived dictionary combined with a different live eSpeak version can produce mixed-version output.
++
++Lexicon lookup/resource failures are errors, not normal misses. Optional packages are imported only when an adapter is selected. Core imports and eSpeak-only frontends do not require Lexphon or G2Lex.
++
++Mixed lexicon/eSpeak sentences can differ from pure eSpeak because selected source spans are intentionally converted independently. Do not claim bit-identical upstream Piper output for lexicon-first mode.
+diff --git a/docs/provenance.md b/docs/provenance.md
+index ce95f85..3b77722 100644
+--- a/docs/provenance.md
++++ b/docs/provenance.md
+@@ -12,4 +12,10 @@ This project is implemented independently under Apache-2.0. The compatibility re
+ | Raw blocks | Observed eSpeak/Piper behavior | Use a small state-machine parser and independent composition helper. |
+ | CLI fallback | Existing project behavior | Keep subprocess execution isolated, UTF-8, no shell, and label parity best-effort. |
+
++| Lexphon managed assets | Lexphon public data/profile APIs | Keep installation, verification, and normalization in the optional adapter. |
++| G2Lex local assets | G2Lex public open/lookup APIs | Keep direct lookup narrow, ordered, and exact-key. |
++| Lexicon overlay | User-provided implementation guide | Preserve Piper sentence/model encoding ownership in PiperG2P. |
++| KokoroG2P | Architectural reference only | Reuse lifecycle ideas without copying source or tests. |
++
++eSpeak-derived test assets are generated during tests from declared source words and pronunciations. Production dictionaries are not bundled for test convenience.
+ No Piper source, comments, tests, lookup tables, model files, bundled resources, or runtime import is used. The pinned upstream identity in the benchmark metadata is historical evidence, not code to port.
+diff --git a/piperg2p/__init__.py b/piperg2p/__init__.py
+index 5e5d5fd..5ea44a6 100644
+--- a/piperg2p/__init__.py
++++ b/piperg2p/__init__.py
+@@ -26,6 +26,10 @@ from .errors import (
+     BackendUnavailableError,
+     CompatibilityWarning,
+     ConfigError,
++    LexiconConfigurationError,
++    LexiconDependencyError,
++    LexiconError,
++    LexiconResourceError,
+     MissingPhonemeError,
+     MissingPhonemeWarning,
+     PhonemizationError,
+@@ -61,6 +65,10 @@ __all__ = [
+     "EspeakBackend",
+     "EspeakCliBackend",
+     "FrontendDiagnostics",
++    "LexiconConfigurationError",
++    "LexiconDependencyError",
++    "LexiconError",
++    "LexiconResourceError",
+     "MissingPhonemeError",
+     "MissingPhonemePolicy",
+     "MissingPhonemeWarning",
+diff --git a/piperg2p/backends/espeak/backend.py b/piperg2p/backends/espeak/backend.py
+index 94e14ba..d7a4139 100644
+--- a/piperg2p/backends/espeak/backend.py
++++ b/piperg2p/backends/espeak/backend.py
+@@ -19,6 +19,7 @@ class EspeakBackend:
+     data: str | None = None
+     vowel_clusters: frozenset[tuple[str, ...]] = frozenset()
+     strict_native: bool = False
++    merge_vowel_clusters: bool = True
+     timeout: float | None = None
+
+     def __post_init__(self) -> None:
+@@ -38,17 +39,20 @@ class EspeakBackend:
+                     library=paths.library,
+                     data=paths.data,
+                     executable=paths.executable,
+-                    strict=self.strict_native or self.mode == "native",
++                    discovery_source=paths.source,
++                    strict=self.strict_native or self.mode in {"native", "auto"},
+                 )
+             except (BackendUnavailableError, OSError) as exc:
+                 if self.mode == "native":
+                     raise
+-                fallback_reason = f"{type(exc).__name__}: {exc}"
+-        if self.mode == "cli" or fallback_reason is not None:
++                if "lacks espeak_TextToPhonemesWithTerminator" in str(exc):
++                    fallback_reason = "terminator API unavailable"
++                else:
++                    fallback_reason = f"{type(exc).__name__}: {exc}"
+             self._provider = EspeakCliBackend(
+                 executable=self.executable,
+                 data_path=self.data,
+-                vowel_clusters=self.vowel_clusters,
++                vowel_clusters=self.vowel_clusters if self.merge_vowel_clusters else frozenset(),
+                 timeout=self.timeout,
+             )
+         provider_diagnostics = self._provider.diagnostics
+@@ -64,6 +68,7 @@ class EspeakBackend:
+                 executable=provider_diagnostics.executable,
+                 library_path=provider_diagnostics.library_path,
+                 data_path=provider_diagnostics.data_path,
++                discovery_source=provider_diagnostics.discovery_source,
+                 version=provider_diagnostics.version,
+                 exact_clause_api=provider_diagnostics.exact_clause_api,
+                 fallback_reason=fallback_reason,
+@@ -77,6 +82,7 @@ class EspeakBackend:
+                 executable=provider_diagnostics.executable,
+                 library_path=provider_diagnostics.library_path,
+                 data_path=provider_diagnostics.data_path,
++                discovery_source=provider_diagnostics.discovery_source,
+                 version=provider_diagnostics.version,
+                 exact_clause_api=provider_diagnostics.exact_clause_api,
+                 fallback_reason=provider_diagnostics.fallback_reason,
+@@ -90,7 +96,8 @@ class EspeakBackend:
+
+     def phonemize(self, text: str, *, voice: str) -> list[list[str]]:
+         if isinstance(self._provider, NativeEspeakProvider):
+-            return compose_clauses(self._provider.clauses(text, voice), self.vowel_clusters)
++            clusters = self.vowel_clusters if self.merge_vowel_clusters else frozenset()
++            return compose_clauses(self._provider.clauses(text, voice), clusters)
+         return self._provider.phonemize(text, voice=voice)
+
+     def close(self) -> None:
+diff --git a/piperg2p/backends/espeak/cli.py b/piperg2p/backends/espeak/cli.py
+index 56eb4ee..48ad3cc 100644
+--- a/piperg2p/backends/espeak/cli.py
++++ b/piperg2p/backends/espeak/cli.py
+@@ -20,12 +20,14 @@ class EspeakCliBackend:
+         paths = discover(executable=self.executable, data=self.data_path)
+         self.executable = paths.executable
+         self.data_path = paths.data
++        self.discovery_source = paths.source
+         self._diagnostics = BackendDiagnostics(
+             requested_mode="cli",
+             implementation="cli",
+             executable=self.executable,
+             data_path=self.data_path,
+             parity="best-effort",
++            discovery_source=self.discovery_source,
+         )
+
+     @property
+diff --git a/piperg2p/backends/espeak/discovery.py b/piperg2p/backends/espeak/discovery.py
+index 083d472..df1441d 100644
+--- a/piperg2p/backends/espeak/discovery.py
++++ b/piperg2p/backends/espeak/discovery.py
+@@ -14,6 +14,18 @@ class EspeakPaths:
+     executable: str | None = None
+     library: str | None = None
+     data: str | None = None
++    source: str = "system"
++
++def _modern_loader_paths() -> tuple[str | None, str | None] | None:
++    try:
++        import espeakng_loader  # type: ignore[import-untyped]
++    except ImportError:
++        return None
++    library = espeakng_loader.get_library_path()
++    data = espeakng_loader.get_data_path()
++    if library and Path(library).is_file():
++        return str(library), str(data) if data else None
++    return None
+
+
+ def find_executable(explicit: str | None = None) -> str:
+@@ -34,6 +46,9 @@ def find_library(explicit: str | None = None, executable: str | None = None) ->
+         if Path(candidate).is_file() or shutil.which(candidate):
+             return candidate
+         raise BackendUnavailableError(f"configured eSpeak library does not exist: {candidate}")
++    packaged = _modern_loader_paths()
++    if packaged is not None:
++        return packaged[0]
+     for name in ("espeak-ng", "espeak"):
+         found = ctypes.util.find_library(name)
+         if found:
+@@ -45,7 +60,6 @@ def find_library(explicit: str | None = None, executable: str | None = None) ->
+             return str(candidates[0])
+     return None
+
+-
+ def find_data(explicit: str | None = None, executable: str | None = None, library: str | None = None) -> str | None:
+     candidate = explicit or os.environ.get("PIPERG2P_ESPEAK_DATA")
+     if candidate:
+@@ -53,6 +67,9 @@ def find_data(explicit: str | None = None, executable: str | None = None, librar
+         if path.is_dir():
+             return str(path)
+         raise BackendUnavailableError(f"configured eSpeak data directory does not exist: {candidate}")
++    packaged = _modern_loader_paths()
++    if packaged is not None and packaged[1] is not None:
++        return packaged[1]
+     candidates: list[Path] = []
+     for value in (executable, library):
+         if value and "/" in value:
+@@ -73,7 +90,29 @@ def discover(
+     data: str | None = None,
+     require_executable: bool = True,
+ ) -> EspeakPaths:
++    configured = any(
++        value is not None
++        for value in (
++            executable,
++            library,
++            data,
++            os.environ.get("PIPERG2P_ESPEAK_EXECUTABLE"),
++            os.environ.get("PIPERG2P_ESPEAK_LIBRARY"),
++            os.environ.get("PIPERG2P_ESPEAK_DATA"),
++        )
++    )
+     exe = find_executable(executable) if require_executable or executable else None
+     lib = find_library(library, exe)
+     data_path = find_data(data, exe, lib)
+-    return EspeakPaths(exe, lib, data_path)
++    packaged = _modern_loader_paths()
++    if configured:
++        source = "explicit"
++    elif packaged is not None and lib == packaged[0]:
++        source = "modern-loader"
++    elif lib == ctypes.util.find_library("espeak-ng") and lib is not None:
++        source = "system-espeak-ng"
++    elif lib is not None:
++        source = "system-espeak"
++    else:
++        source = "unknown"
++    return EspeakPaths(exe, lib, data_path, source)
+diff --git a/piperg2p/backends/espeak/native.py b/piperg2p/backends/espeak/native.py
+index bf68537..e8da0b2 100644
+--- a/piperg2p/backends/espeak/native.py
++++ b/piperg2p/backends/espeak/native.py
+@@ -9,9 +9,10 @@ from ...diagnostics import BackendDiagnostics
+ from ...errors import BackendUnavailableError, PhonemizationError
+ from .clauses import Clause
+
+-_AUDIO_OUTPUT_SYNCHRONOUS = 3
+-_CHARS_UTF8 = 1
+-_IPA = 2
++# Values from the public eSpeak NG speech.h API.
++AUDIO_OUTPUT_SYNCHRONOUS = 2
++CHARS_UTF8 = 1
++IPA_OUTPUT = 2
+ _TERMINATORS = {
+     0x41000: (",", False),
+     0x42000: (":", False),
+@@ -51,7 +52,7 @@ class _NativeManager:
+                     path = Path(data_path)
+                     init_path = str(path.parent if path.name == "espeak-ng-data" else path)
+                 result = self.library.espeak_Initialize(
+-                    _AUDIO_OUTPUT_SYNCHRONOUS,
++                    AUDIO_OUTPUT_SYNCHRONOUS,
+                     0,
+                     init_path.encode() if init_path else None,
+                     0,
+@@ -110,11 +111,13 @@ class NativeEspeakProvider:
+         library: str | None = None,
+         data: str | None = None,
+         executable: str | None = None,
++        discovery_source: str | None = None,
+         strict: bool = False,
+     ) -> None:
+         self.library_path = library
+         self.data_path = data
+         self.executable = executable
++        self.discovery_source = discovery_source
+         self._closed = False
+         self._library = _MANAGER.acquire(library, data)
+         self.exact_clause_api = hasattr(self._library, "espeak_TextToPhonemesWithTerminator")
+@@ -132,6 +135,7 @@ class NativeEspeakProvider:
+             executable=self.executable,
+             library_path=_MANAGER.path or self.library_path,
+             data_path=self.data_path,
++            discovery_source=self.discovery_source,
+             version=self.version,
+             exact_clause_api=self.exact_clause_api,
+             parity="exact" if self.exact_clause_api else "best-effort",
+@@ -154,10 +158,10 @@ class NativeEspeakProvider:
+                 terminator = ctypes.c_int(0)
+                 if self.exact_clause_api:
+                     value = self._library.espeak_TextToPhonemesWithTerminator(
+-                        ctypes.byref(pointer), _CHARS_UTF8, _IPA, ctypes.byref(terminator)
++                        ctypes.byref(pointer), CHARS_UTF8, IPA_OUTPUT, ctypes.byref(terminator)
+                     )
+                 else:
+-                    value = self._library.espeak_TextToPhonemes(ctypes.byref(pointer), _CHARS_UTF8, _IPA)
++                    value = self._library.espeak_TextToPhonemes(ctypes.byref(pointer), CHARS_UTF8, IPA_OUTPUT)
+                 if pointer.value == previous:
+                     raise PhonemizationError("eSpeak clause API made no progress")
+                 payload = value.decode("utf-8") if value else ""
+diff --git a/piperg2p/diagnostics.py b/piperg2p/diagnostics.py
+index 1893afb..5ba25a8 100644
+--- a/piperg2p/diagnostics.py
++++ b/piperg2p/diagnostics.py
+@@ -3,7 +3,10 @@
+ from __future__ import annotations
+
+ from dataclasses import dataclass
++from typing import TYPE_CHECKING
+
++if TYPE_CHECKING:
++    from .lexicons.base import LexiconDiagnostics
+
+ @dataclass(frozen=True)
+ class BackendDiagnostics:
+@@ -12,6 +15,7 @@ class BackendDiagnostics:
+     executable: str | None = None
+     library_path: str | None = None
+     data_path: str | None = None
++    discovery_source: str | None = None
+     version: str | None = None
+     exact_clause_api: bool = False
+     fallback_reason: str | None = None
+@@ -26,3 +30,4 @@ class FrontendDiagnostics:
+     compatibility_profile: str = "piper-python"
+     warnings: tuple[str, ...] = ()
+     backend_diagnostics: BackendDiagnostics | None = None
++    lexicon: LexiconDiagnostics | None = None
+diff --git a/piperg2p/errors.py b/piperg2p/errors.py
+index c17a3df..2937fd5 100644
+--- a/piperg2p/errors.py
++++ b/piperg2p/errors.py
+@@ -35,6 +35,22 @@ class ResourceUnavailableError(ResourceError):
+     """An optional resource is not installed or usable."""
+
+
++
++class LexiconError(PiperG2PError):
++    """Base class for lexicon overlay failures."""
++
++
++class LexiconDependencyError(LexiconError):
++    """An optional lexicon package is not installed."""
++
++
++class LexiconResourceError(LexiconError):
++    """A requested lexicon asset or runtime is invalid or unavailable."""
++
++
++class LexiconConfigurationError(LexiconError):
++    """Lexicon options are incompatible with the selected frontend."""
++
+ class MissingPhonemeError(PiperG2PError, KeyError):
+     """A required phoneme is absent from the selected voice map."""
+
+diff --git a/piperg2p/frontend.py b/piperg2p/frontend.py
+index dc91bda..db1dfd0 100644
+--- a/piperg2p/frontend.py
++++ b/piperg2p/frontend.py
+@@ -1,14 +1,16 @@
+ from __future__ import annotations
+
+-from collections.abc import Iterable
++from collections.abc import Iterable, Sequence
+ from pathlib import Path
+ from typing import Any
+
+-from .backends import PhonemeBackend
++from .backends import EspeakBackend, PhonemeBackend
+ from .codec import EncodeResult, MissingPhonemePolicy
+ from .config import PhonemeType, VoiceConfig
+ from .diagnostics import FrontendDiagnostics
+-from .errors import UnsupportedPhonemeTypeError
++from .errors import LexiconConfigurationError, UnsupportedPhonemeTypeError
++from .lexicons.base import LexiconDiagnostics, PronunciationLookup
++from .lexicons.overlay import compose_lexicon_overlay
+ from .raw_blocks import compose_raw_segments, parse_raw_blocks
+ from .registry import spec_for
+ from .types import PhonemeSentence, PhonemizeResult
+@@ -23,19 +25,54 @@ class PiperFrontend:
+         *,
+         backend: PhonemeBackend | None = None,
+         missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN,
++        lexicons: Sequence[str] = (),
++        lexicon_store: Any = None,
++        lexicon_backend: PronunciationLookup | None = None,
+     ) -> None:
+         self.config = config
+         self.missing = MissingPhonemePolicy(missing)
+         self._spec = spec_for(config)
++        self._lexicon_identifiers = tuple(lexicons)
++        if self._lexicon_identifiers and lexicon_backend is not None:
++            raise LexiconConfigurationError("lexicons and lexicon_backend are mutually exclusive")
++        if lexicon_store is not None and not self._lexicon_identifiers:
++            raise LexiconConfigurationError("lexicon_store requires managed lexicons")
++        if (self._lexicon_identifiers or lexicon_backend is not None) and config.phoneme_type is not PhonemeType.ESPEAK:
++            raise LexiconConfigurationError("lexicon overlay only supports phoneme_type='espeak'")
++        self._lexicon_store = lexicon_store
++        self._lexicon_backend = lexicon_backend
++        self._owns_lexicon_backend = False
+         self.backend = backend if backend is not None else self._make_backend()
+
++    @property
++    def _lexicon_enabled(self) -> bool:
++        return bool(self._lexicon_identifiers or self._lexicon_backend is not None)
++
+     def _make_backend(self) -> PhonemeBackend:
+         if self.config.phoneme_type in {PhonemeType.TEXT, PhonemeType.ESPEAK}:
++            if self.config.phoneme_type is PhonemeType.ESPEAK and self._lexicon_enabled:
++                return EspeakBackend(
++                    vowel_clusters=self.config.vowel_clusters,
++                    merge_vowel_clusters=False,
++                )
+             return self._spec.backend_factory(self.config)
+         raise UnsupportedPhonemeTypeError(
+             f"phoneme_type {self.config.phoneme_type.value!r} requires optional extra {self._spec.optional_extra!r}"
+         )
+
++    def _ensure_lexicon_backend(self) -> PronunciationLookup:
++        if self._lexicon_backend is not None:
++            return self._lexicon_backend
++        from .lexicons.lexphon import LexphonLookup
++
++        self._lexicon_backend = LexphonLookup(
++            self.config.espeak_voice,
++            self._lexicon_identifiers,
++            store=self._lexicon_store,
++        )
++        self._owns_lexicon_backend = True
++        return self._lexicon_backend
++
+     @classmethod
+     def from_config(cls, path: str | Path, **kwargs: Any) -> PiperFrontend:
+         return cls(VoiceConfig.from_json(path), **kwargs)
+@@ -43,6 +80,19 @@ class PiperFrontend:
+     def encode(self, phonemes: Iterable[str]) -> EncodeResult:
+         return self._spec.encoder.encode(tuple(phonemes), self.config.phoneme_id_map, self.missing)
+
++    def _lexicon_diagnostics(self) -> LexiconDiagnostics | None:
++        if not self._lexicon_enabled:
++            return None
++        if self._lexicon_backend is not None:
++            return self._lexicon_backend.diagnostics
++        return LexiconDiagnostics(
++            enabled=True,
++            implementation="lexphon",
++            language=self.config.espeak_voice,
++            identifiers=self._lexicon_identifiers,
++            compatibility="override",
++        )
++
+     @property
+     def diagnostics(self) -> FrontendDiagnostics:
+         backend_diagnostics = getattr(self.backend, "diagnostics", None)
+@@ -50,15 +100,25 @@ class PiperFrontend:
+             phoneme_type=self.config.phoneme_type.value,
+             backend=backend_diagnostics.implementation if backend_diagnostics else type(self.backend).__name__,
+             backend_diagnostics=backend_diagnostics,
++            lexicon=self._lexicon_diagnostics(),
+         )
+
+     def phonemize_prepared(self, text: str) -> PhonemizeResult:
+         if self.config.phoneme_type is PhonemeType.ESPEAK:
+             segments = parse_raw_blocks(text)
+-            groups = compose_raw_segments(
+-                segments,
+-                lambda value: self.backend.phonemize(value, voice=self.config.espeak_voice),
+-            )
++            if self._lexicon_enabled:
++                lookup = self._ensure_lexicon_backend()
++                groups = compose_lexicon_overlay(
++                    segments,
++                    lookup,
++                    lambda value: self.backend.phonemize(value, voice=self.config.espeak_voice),
++                    vowel_clusters=self.config.vowel_clusters,
++                )
++            else:
++                groups = compose_raw_segments(
++                    segments,
++                    lambda value: self.backend.phonemize(value, voice=self.config.espeak_voice),
++                )
+         else:
+             groups = self.backend.phonemize(text, voice=self.config.espeak_voice)
+         sentences: list[PhonemeSentence] = []
+@@ -87,6 +147,9 @@ class PiperFrontend:
+         close = getattr(self.backend, "close", None)
+         if close is not None:
+             close()
++        if self._owns_lexicon_backend and self._lexicon_backend is not None:
++            self._lexicon_backend.close()
++            self._lexicon_backend = None
+
+     def __enter__(self) -> PiperFrontend:
+         return self
+diff --git a/piperg2p/lexicons/__init__.py b/piperg2p/lexicons/__init__.py
+new file mode 100644
+index 0000000..2b9b642
+--- /dev/null
++++ b/piperg2p/lexicons/__init__.py
+@@ -0,0 +1,11 @@
++from .base import LexiconDiagnostics, LexiconPronunciation, PronunciationLookup
++from .g2lex import G2LexLookup
++from .lexphon import LexphonLookup
++
++__all__ = [
++    "G2LexLookup",
++    "LexiconDiagnostics",
++    "LexiconPronunciation",
++    "LexphonLookup",
++    "PronunciationLookup",
++]
+diff --git a/piperg2p/lexicons/base.py b/piperg2p/lexicons/base.py
+new file mode 100644
+index 0000000..2705881
+--- /dev/null
++++ b/piperg2p/lexicons/base.py
+@@ -0,0 +1,37 @@
++from __future__ import annotations
++
++from collections.abc import Sequence
++from dataclasses import dataclass
++from typing import Protocol
++
++
++@dataclass(frozen=True)
++class LexiconPronunciation:
++    pronunciation: str
++    source: str
++    lexicon_id: str | None = None
++    matched_key: str | None = None
++    source_encoding: str | None = None
++
++
++@dataclass(frozen=True)
++class LexiconDiagnostics:
++    enabled: bool
++    implementation: str | None
++    language: str | None
++    identifiers: tuple[str, ...]
++    compatibility: str
++    detail: str | None = None
++
++
++class PronunciationLookup(Protocol):
++    def lookup(self, word: str, *, tag: str | None = None) -> LexiconPronunciation | None: ...
++
++    def lookup_many(
++        self, words: Sequence[str], *, tag: str | None = None
++    ) -> tuple[LexiconPronunciation | None, ...]: ...
++
++    @property
++    def diagnostics(self) -> LexiconDiagnostics: ...
++
++    def close(self) -> None: ...
+diff --git a/piperg2p/lexicons/g2lex.py b/piperg2p/lexicons/g2lex.py
+new file mode 100644
+index 0000000..7328642
+--- /dev/null
++++ b/piperg2p/lexicons/g2lex.py
+@@ -0,0 +1,122 @@
++from __future__ import annotations
++
++from collections.abc import Sequence
++from pathlib import Path
++from typing import Any
++
++from ..errors import LexiconDependencyError, LexiconResourceError
++from .base import LexiconDiagnostics, LexiconPronunciation
++
++
++class G2LexLookup:
++    """Lazy exact-key lookup over explicitly supplied G2Lex assets."""
++
++    def __init__(self, paths: Sequence[str | Path], *, language: str | None = None) -> None:
++        self.paths = tuple(str(path) for path in paths)
++        self.language = language
++        self._assets: tuple[Any, ...] | None = None
++        self._closed = False
++
++    @property
++    def diagnostics(self) -> LexiconDiagnostics:
++        return LexiconDiagnostics(
++            enabled=True,
++            implementation="g2lex",
++            language=self.language,
++            identifiers=self.paths,
++            compatibility="override",
++        )
++
++    @staticmethod
++    def _metadata(asset: Any) -> dict[str, Any]:
++        metadata = getattr(asset, "metadata", None)
++        if isinstance(metadata, dict):
++            return metadata
++        source = getattr(asset, "source", None)
++        if source is not None:
++            values = getattr(source, "__dict__", None)
++            if isinstance(values, dict):
++                return values
++        return {}
++
++    def _validate_asset(self, asset: Any, path: str) -> None:
++        metadata = self._metadata(asset)
++        declared_language = metadata.get("language") or metadata.get("locale")
++        if self.language and declared_language and not str(declared_language).lower().startswith(self.language.lower()):
++            raise LexiconResourceError(
++                f"G2Lex asset {path!r} declares language {declared_language!r}, "
++                f"not requested {self.language!r}"
++            )
++        alphabet = metadata.get("pronunciation_alphabet") or metadata.get("alphabet")
++        if alphabet and str(alphabet).lower().replace("_", "-") not in {"ipa", "unicode-ipa", "ipa-unicode"}:
++            raise LexiconResourceError(
++                f"G2Lex asset {path!r} uses unsupported pronunciation alphabet {alphabet!r}; "
++                "direct lookup supports IPA/Unicode IPA assets"
++            )
++
++    def _ensure_assets(self) -> tuple[Any, ...]:
++        if self._closed:
++            raise LexiconResourceError("G2Lex lookup adapter is closed")
++        if self._assets is not None:
++            return self._assets
++        try:
++            import g2lex
++        except ImportError as exc:
++            raise LexiconDependencyError(
++                "Direct G2Lex support requires the optional 'g2lex' extra. Install piperg2p[g2lex]."
++            ) from exc
++        assets: list[Any] = []
++        try:
++            for path in self.paths:
++                if not Path(path).is_file():
++                    raise LexiconResourceError(f"G2Lex asset does not exist: {path}")
++                asset = g2lex.open(path)
++                self._validate_asset(asset, path)
++                assets.append(asset)
++        except LexiconResourceError:
++            for asset in assets:
++                asset.close()
++            raise
++        except Exception as exc:
++            for asset in assets:
++                asset.close()
++            raise LexiconResourceError(f"Could not open G2Lex asset {path!r}") from exc
++        self._assets = tuple(assets)
++        return self._assets
++
++    def lookup(self, word: str, *, tag: str | None = None) -> LexiconPronunciation | None:
++        assets = self._ensure_assets()
++        try:
++            for asset, path in zip(assets, self.paths):
++                value = asset.lookup(word, tag=tag)
++                if value is not None:
++                    pronunciation = str(value)
++                    return LexiconPronunciation(
++                        pronunciation=pronunciation,
++                        source=f"g2lex:{path}",
++                        lexicon_id=path,
++                        matched_key=word,
++                    )
++        except Exception as exc:
++            if isinstance(exc, LexiconResourceError):
++                raise
++            raise LexiconResourceError(f"G2Lex lookup failed for {word!r}") from exc
++        return None
++
++    def lookup_many(
++        self, words: Sequence[str], *, tag: str | None = None
++    ) -> tuple[LexiconPronunciation | None, ...]:
++        return tuple(self.lookup(word, tag=tag) for word in words)
++
++    def close(self) -> None:
++        if self._assets is not None:
++            for asset in self._assets:
++                asset.close()
++        self._assets = None
++        self._closed = True
++
++    def __enter__(self) -> "G2LexLookup":
++        return self
++
++    def __exit__(self, *_: object) -> None:
++        self.close()
+diff --git a/piperg2p/lexicons/lexphon.py b/piperg2p/lexicons/lexphon.py
+new file mode 100644
+index 0000000..7f68943
+--- /dev/null
++++ b/piperg2p/lexicons/lexphon.py
+@@ -0,0 +1,108 @@
++from __future__ import annotations
++
++from collections.abc import Sequence
++from typing import Any
++
++from ..errors import LexiconDependencyError, LexiconResourceError
++from .base import LexiconDiagnostics, LexiconPronunciation
++
++
++class LexphonLookup:
++    """Lazy, lexicon-only adapter around Lexphon."""
++
++    def __init__(
++        self,
++        language: str,
++        identifiers: Sequence[str],
++        *,
++        store: Any = None,
++    ) -> None:
++        self.language = language
++        self.identifiers = tuple(identifiers)
++        self.store = store
++        self._runtime: Any = None
++        self._closed = False
++
++    @property
++    def diagnostics(self) -> LexiconDiagnostics:
++        return LexiconDiagnostics(
++            enabled=True,
++            implementation="lexphon",
++            language=self.language,
++            identifiers=self.identifiers,
++            compatibility="override",
++        )
++
++    def _ensure_runtime(self) -> Any:
++        if self._closed:
++            raise LexiconResourceError("Lexphon lookup adapter is closed")
++        if self._runtime is not None:
++            return self._runtime
++        try:
++            from lexphon import Phonemizer  # type: ignore[import-not-found]
++        except ImportError as exc:
++            raise LexiconDependencyError(
++                "Lexphon support requires the optional 'lexphon' extra. Install piperg2p[lexphon]."
++            ) from exc
++        try:
++            self._runtime = Phonemizer(
++                self.language,
++                lexicons=list(self.identifiers),
++                store=self.store,
++                fallback=None,
++            )
++        except Exception as exc:
++            identifiers = ", ".join(repr(identifier) for identifier in self.identifiers)
++            raise LexiconResourceError(
++                f"Could not open Lexphon lexicon(s) {identifiers}. "
++                "Install or verify the requested data, or pass a different DataStore."
++            ) from exc
++        return self._runtime
++
++    @staticmethod
++    def _convert(token: Any) -> LexiconPronunciation | None:
++        if token is None:
++            return None
++        if isinstance(token, LexiconPronunciation):
++            return token
++        source = getattr(token, "source", "lexphon")
++        source_name = getattr(source, "value", None) or str(source)
++        pronunciation = getattr(token, "pronunciation", None) or getattr(token, "text", token)
++        return LexiconPronunciation(
++            pronunciation=str(pronunciation),
++            source=source_name,
++            lexicon_id=getattr(token, "lexicon_id", None),
++            matched_key=getattr(token, "matched_key", None),
++            source_encoding=getattr(token, "source_encoding", None),
++        )
++
++    def lookup(self, word: str, *, tag: str | None = None) -> LexiconPronunciation | None:
++        runtime = self._ensure_runtime()
++        try:
++            token = runtime.lookup_lexicon(word, tag=tag)
++        except Exception as exc:
++            raise LexiconResourceError(f"Lexphon lookup failed for {word!r}") from exc
++        return self._convert(token)
++
++    def lookup_many(
++        self, words: Sequence[str], *, tag: str | None = None
++    ) -> tuple[LexiconPronunciation | None, ...]:
++        runtime = self._ensure_runtime()
++        try:
++            tokens = runtime.lookup_many(tuple(words), tag=tag)
++        except AttributeError:
++            return tuple(self.lookup(word, tag=tag) for word in words)
++        except Exception as exc:
++            raise LexiconResourceError("Lexphon batch lookup failed") from exc
++        return tuple(self._convert(token) for token in tokens)
++
++    def close(self) -> None:
++        if not self._closed and self._runtime is not None:
++            self._runtime.close()
++        self._closed = True
++
++    def __enter__(self) -> "LexphonLookup":
++        return self
++
++    def __exit__(self, *_: object) -> None:
++        self.close()
+diff --git a/piperg2p/lexicons/overlay.py b/piperg2p/lexicons/overlay.py
+new file mode 100644
+index 0000000..0945e6f
+--- /dev/null
++++ b/piperg2p/lexicons/overlay.py
+@@ -0,0 +1,114 @@
++from __future__ import annotations
++
++import unicodedata
++from collections.abc import Callable, Iterable
++
++from ..backends.espeak.clauses import merge_vowel_clusters
++from ..errors import LexiconResourceError
++from ..raw_blocks import (
++    PreparedSegment,
++    Segment,
++    compose_prepared_segments,
++    prepare_segments,
++)
++from .base import PronunciationLookup
++from .spans import scan_source_spans
++
++
++def _coalesce_text_segments(segments: Iterable[PreparedSegment]) -> tuple[PreparedSegment, ...]:
++    result: list[PreparedSegment] = []
++    for segment in segments:
++        if (
++            result
++            and segment.kind == "text"
++            and result[-1].kind == "text"
++            and result[-1].source_end == segment.source_start
++        ):
++            previous = result[-1]
++            result[-1] = PreparedSegment(
++                "text",
++                previous.value + segment.value,
++                previous.source_start,
++                segment.source_end,
++                "source",
++            )
++        else:
++            result.append(segment)
++    return tuple(result)
++
++
++def overlay_text_segment(
++    segment: PreparedSegment,
++    lookup: PronunciationLookup,
++    *,
++    tag: str | None = None,
++) -> tuple[PreparedSegment, ...]:
++    spans = scan_source_spans(segment.value)
++    words = tuple(span.text for span in spans if span.kind == "word")
++    if not words:
++        return (segment,)
++    hits = lookup.lookup_many(words, tag=tag)
++    if len(hits) != len(words):
++        raise LexiconResourceError("lexicon lookup returned an invalid batch length")
++    hit_index = 0
++    prepared: list[PreparedSegment] = []
++    for span in spans:
++        start = segment.source_start + span.start
++        end = segment.source_start + span.end
++        if span.kind == "other":
++            prepared.append(PreparedSegment("text", span.text, start, end, "source"))
++            continue
++        pronunciation = hits[hit_index]
++        hit_index += 1
++        if pronunciation is None:
++            prepared.append(PreparedSegment("text", span.text, start, end, "source"))
++        else:
++            prepared.append(
++                PreparedSegment(
++                    "phonemes",
++                    unicodedata.normalize("NFD", pronunciation.pronunciation),
++                    start,
++                    end,
++                    pronunciation.source,
++                )
++            )
++    return _coalesce_text_segments(prepared)
++
++
++def prepare_lexicon_segments(
++    segments: Iterable[Segment], lookup: PronunciationLookup, *, tag: str | None = None
++) -> tuple[PreparedSegment, ...]:
++    prepared = prepare_segments(segments)
++    output: list[PreparedSegment] = []
++    for segment in prepared:
++        if segment.kind == "phonemes":
++            output.append(segment)
++        else:
++            overlayed = overlay_text_segment(segment, lookup, tag=tag)
++            for item in overlayed:
++                if item.kind == "text" and item.value.isspace():
++                    output.append(
++                        PreparedSegment(
++                            "phonemes",
++                            item.value,
++                            item.source_start,
++                            item.source_end,
++                            "source-space",
++                        )
++                    )
++                else:
++                    output.append(item)
++    return tuple(output)
++
++
++def compose_lexicon_overlay(
++    segments: Iterable[Segment],
++    lookup: PronunciationLookup,
++    phonemize_text: Callable[[str], list[list[str]]],
++    *,
++    vowel_clusters: frozenset[tuple[str, ...]] = frozenset(),
++    tag: str | None = None,
++) -> list[list[str]]:
++    prepared = prepare_lexicon_segments(segments, lookup, tag=tag)
++    groups = compose_prepared_segments(prepared, phonemize_text)
++    return [merge_vowel_clusters(list(group), vowel_clusters) for group in groups]
+diff --git a/piperg2p/lexicons/spans.py b/piperg2p/lexicons/spans.py
+new file mode 100644
+index 0000000..2cda0c5
+--- /dev/null
++++ b/piperg2p/lexicons/spans.py
+@@ -0,0 +1,63 @@
++from __future__ import annotations
++
++import unicodedata
++from dataclasses import dataclass
++from typing import Literal
++
++
++@dataclass(frozen=True)
++class SourceSpan:
++    text: str
++    start: int
++    end: int
++    kind: Literal["word", "other"]
++
++
++_APOSTROPHES = frozenset(("'", "’", "ʼ", "＇"))
++_HYPHENS = frozenset(("-", "‐", "‑", "‒", "–", "—", "−"))
++
++
++def _is_word_character(value: str) -> bool:
++    return bool(value) and unicodedata.category(value)[0] in {"L", "N"}
++
++
++def _is_combining(value: str) -> bool:
++    return bool(value) and unicodedata.category(value).startswith("M")
++
++
++def _word_end(text: str, start: int) -> int:
++    position = start
++    while position < len(text):
++        value = text[position]
++        if _is_word_character(value) or _is_combining(value):
++            position += 1
++            continue
++        if value in _APOSTROPHES or value in _HYPHENS:
++            next_position = position + 1
++            if next_position < len(text) and _is_word_character(text[next_position]):
++                position += 1
++                continue
++        break
++    return position
++
++
++def scan_source_spans(text: str) -> tuple[SourceSpan, ...]:
++    """Return contiguous source spans without discarding punctuation or whitespace."""
++    spans: list[SourceSpan] = []
++    position = 0
++    while position < len(text):
++        if _is_word_character(text[position]):
++            end = _word_end(text, position)
++            spans.append(SourceSpan(text[position:end], position, end, "word"))
++            position = end
++            continue
++        start = position
++        position += 1
++        while position < len(text) and not _is_word_character(text[position]):
++            position += 1
++        spans.append(SourceSpan(text[start:position], start, position, "other"))
++    return tuple(spans)
++
++
++def word_spans(text: str) -> tuple[SourceSpan, ...]:
++    return tuple(span for span in scan_source_spans(text) if span.kind == "word")
+diff --git a/piperg2p/raw_blocks.py b/piperg2p/raw_blocks.py
+index 0d61ba6..de150c0 100644
+--- a/piperg2p/raw_blocks.py
++++ b/piperg2p/raw_blocks.py
+@@ -1,22 +1,44 @@
+ from __future__ import annotations
+
+ from collections.abc import Callable, Iterable
+-from dataclasses import dataclass
++from dataclasses import dataclass, field
++from typing import Literal
+
+
+ @dataclass(frozen=True)
+ class TextSegment:
+     text: str
++    source_start: int = field(default=0, compare=False)
++    source_end: int | None = field(default=None, compare=False)
+
+
+ @dataclass(frozen=True)
+ class RawPhonemeSegment:
+     text: str
++    source_start: int = field(default=0, compare=False)
++    source_end: int | None = field(default=None, compare=False)
+
+
+ Segment = TextSegment | RawPhonemeSegment
+
+
++@dataclass(frozen=True)
++class PreparedSegment:
++    kind: Literal["text", "phonemes"]
++    value: str
++    source_start: int
++    source_end: int
++    provenance: str = "source"
++
++
++def _text_segment(text: str, start: int, end: int) -> TextSegment:
++    return TextSegment(text, start, end)
++
++
++def _raw_segment(text: str, start: int, end: int) -> RawPhonemeSegment:
++    return RawPhonemeSegment(text, start, end)
++
++
+ def parse_raw_blocks(text: str) -> list[Segment]:
+     """Parse eSpeak-style raw blocks without interpreting their contents."""
+     segments: list[Segment] = []
+@@ -31,44 +53,71 @@ def parse_raw_blocks(text: str) -> list[Segment]:
+             position = closing + 2
+             continue
+         if opening > text_start:
+-            segments.append(TextSegment(text[text_start:opening]))
++            segments.append(_text_segment(text[text_start:opening], text_start, opening))
+         end = text.find("]]", opening + 2)
+         if end < 0:
+             remainder = text[opening:]
+             if segments and isinstance(segments[-1], TextSegment):
+-                segments[-1] = TextSegment(segments[-1].text + remainder)
++                previous = segments[-1]
++                segments[-1] = _text_segment(
++                    previous.text + remainder,
++                    previous.source_start,
++                    len(text),
++                )
+             else:
+-                segments.append(TextSegment(remainder))
++                segments.append(_text_segment(remainder, opening, len(text)))
+             return [segment for segment in segments if not isinstance(segment, TextSegment) or segment.text]
+         raw = text[opening + 2 : end].strip()
+-        segments.append(RawPhonemeSegment(raw))
++        segments.append(_raw_segment(raw, opening, end + 2))
+         position = end + 2
+         text_start = position
+     if text_start < len(text):
+-        segments.append(TextSegment(text[text_start:]))
++        segments.append(_text_segment(text[text_start:], text_start, len(text)))
+     elif not segments and text:
+-        segments.append(TextSegment(text))
++        segments.append(_text_segment(text, 0, len(text)))
+     return [segment for segment in segments if not isinstance(segment, TextSegment) or segment.text]
+
+
+-def compose_raw_segments(
+-    segments: Iterable[Segment], phonemize_text: Callable[[str], list[list[str]]]
++def prepare_segments(segments: Iterable[Segment]) -> tuple[PreparedSegment, ...]:
++    """Convert source and raw segments into the shared compositor representation."""
++    prepared: list[PreparedSegment] = []
++    for segment in segments:
++        end = segment.source_end if segment.source_end is not None else segment.source_start + len(segment.text)
++        if isinstance(segment, RawPhonemeSegment):
++            prepared.append(PreparedSegment("phonemes", segment.text, segment.source_start, end, "raw-block"))
++        else:
++            prepared.append(PreparedSegment("text", segment.text, segment.source_start, end, "source"))
++    return tuple(prepared)
++
++
++def needs_left_boundary_space(left: str, right: str) -> bool:
++    """Return whether source text explicitly places whitespace at the join."""
++    return bool(left and right and (left[-1].isspace() or right[0].isspace()))
++
++
++def needs_right_boundary_space(left: str, right: str) -> bool:
++    """Return whether source text explicitly places whitespace at the join."""
++    return needs_left_boundary_space(left, right)
++
++
++def compose_prepared_segments(
++    segments: Iterable[PreparedSegment], phonemize_text: Callable[[str], list[list[str]]]
+ ) -> list[list[str]]:
+-    """Compose backend sentence groups and raw codepoints in source order."""
++    """Compose text and direct phoneme segments in source order."""
+     output: list[list[str]] = []
+     join_next = False
+     for segment in segments:
+-        if isinstance(segment, RawPhonemeSegment):
+-            if not segment.text:
++        if segment.kind == "phonemes":
++            if not segment.value:
+                 join_next = True
+                 continue
+             if output:
+-                output[-1].extend(segment.text)
++                output[-1].extend(segment.value)
+             else:
+-                output.append(list(segment.text))
++                output.append(list(segment.value))
+             join_next = True
+             continue
+-        groups = [list(group) for group in phonemize_text(segment.text)]
++        groups = [list(group) for group in phonemize_text(segment.value)]
+         if not groups:
+             continue
+         if join_next and output:
+@@ -76,3 +125,10 @@ def compose_raw_segments(
+             join_next = False
+         output.extend(groups)
+     return [group for group in output if group]
++
++
++def compose_raw_segments(
++    segments: Iterable[Segment], phonemize_text: Callable[[str], list[list[str]]]
++) -> list[list[str]]:
++    """Compose backend sentence groups and raw codepoints in source order."""
++    return compose_prepared_segments(prepare_segments(segments), phonemize_text)
+diff --git a/pyproject.toml b/pyproject.toml
+index a77dbab..f4f25c4 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -24,7 +24,13 @@ classifiers = [
+
+ [project.optional-dependencies]
+ dev = ["pytest>=7", "pytest-cov>=4", "ruff>=0.6", "mypy>=1.10", "build>=1"]
+-espeak-direct = []
++g2lex = ["g2lex>=0.1.8,<0.2"]
++lexphon = ["lexphon>=0.2.3,<0.3"]
++espeak-direct = [
++  "espeakng-loader>=0.1.0",
++  "dlinfo>=1.2.1; sys_platform != 'win32' and sys_platform != 'android'",
++]
++lexicons = ["lexphon>=0.2.3,<0.3"]
+ zh = []
+ ja = []
+ th = []
+diff --git a/tests/test_clause_backend.py b/tests/test_clause_backend.py
+index b5da297..6f0026c 100644
+--- a/tests/test_clause_backend.py
++++ b/tests/test_clause_backend.py
+@@ -60,22 +60,23 @@ def test_cli_backend_uses_utf8_and_reports_best_effort(monkeypatch):
+     assert backend.diagnostics.parity == "best-effort"
+
+
+-def test_native_provider_is_available_when_library_is_installed():
++def test_native_provider_can_initialize_if_library_is_installed():
+     try:
+         provider = NativeEspeakProvider()
+     except BackendUnavailableError:
+         pytest.skip("native eSpeak library unavailable")
+     try:
+         clauses = provider.clauses("Hello, world.", "en-us")
+-        assert len(clauses) >= 2
+-        assert clauses[0].terminator == ","
+-        assert clauses[-1].sentence_end
++        assert clauses
+         assert provider.diagnostics.version
+-        assert provider.diagnostics.exact_clause_api
++        if provider.diagnostics.exact_clause_api:
++            assert clauses[0].terminator == ","
++            assert clauses[-1].sentence_end
++        else:
++            assert provider.diagnostics.parity == "best-effort"
+     finally:
+         provider.close()
+
+-
+ def test_auto_backend_prefers_native_or_diagnoses_cli():
+     with warnings.catch_warnings(record=True) as caught:
+         warnings.simplefilter("always")
+diff --git a/tests/test_espeak_exact_contract.py b/tests/test_espeak_exact_contract.py
+new file mode 100644
+index 0000000..1b77947
+--- /dev/null
++++ b/tests/test_espeak_exact_contract.py
+@@ -0,0 +1,79 @@
++from __future__ import annotations
++
++import sys
++import types
++
++import pytest
++
++from piperg2p import BackendFallbackWarning, EspeakBackend
++from piperg2p.backends.espeak import backend as backend_module
++from piperg2p.backends.espeak.discovery import discover
++from piperg2p.backends.espeak.native import AUDIO_OUTPUT_SYNCHRONOUS
++
++
++def test_public_synchronous_output_constant_matches_espeak_api():
++    assert AUDIO_OUTPUT_SYNCHRONOUS == 2
++
++
++def test_discovery_prefers_packaged_loader(monkeypatch, tmp_path):
++    library = tmp_path / "libespeak-ng.so"
++    data = tmp_path / "espeak-ng-data"
++    library.write_bytes(b"")
++    data.mkdir()
++    loader = types.SimpleNamespace(
++        get_library_path=lambda: str(library),
++        get_data_path=lambda: str(data),
++    )
++    monkeypatch.setitem(sys.modules, "espeakng_loader", loader)
++    monkeypatch.setattr("piperg2p.backends.espeak.discovery.find_executable", lambda explicit=None: "espeak-ng")
++
++    paths = discover()
++
++    assert paths.library == str(library)
++    assert paths.data == str(data)
++    assert paths.source == "modern-loader"
++
++
++def test_auto_rejects_native_provider_without_exact_clause_api(monkeypatch):
++    calls: list[bool] = []
++
++    class Native:
++        def __init__(self, **kwargs):
++            calls.append(kwargs["strict"])
++            raise backend_module.BackendUnavailableError(
++                "loaded eSpeak library lacks espeak_TextToPhonemesWithTerminator"
++            )
++
++    class Cli:
++        diagnostics = types.SimpleNamespace(
++            implementation="cli",
++            executable="espeak-ng",
++            library_path=None,
++            data_path=None,
++            discovery_source="system-espeak-ng",
++            version=None,
++            exact_clause_api=False,
++            fallback_reason=None,
++            parity="best-effort",
++            warnings=(),
++        )
++
++        def __init__(self, **kwargs):
++            del kwargs
++
++        def close(self):
++            pass
++
++    monkeypatch.setattr(backend_module, "NativeEspeakProvider", Native)
++    monkeypatch.setattr(backend_module, "EspeakCliBackend", Cli)
++    monkeypatch.setattr(backend_module, "discover", lambda **kwargs: types.SimpleNamespace(
++        library="old", data=None, executable="espeak-ng", source="system-espeak"
++    ))
++
++    with pytest.warns(BackendFallbackWarning, match="terminator API unavailable"):
++        backend = EspeakBackend(mode="auto")
++
++    assert calls == [True]
++    assert backend.diagnostics.implementation == "cli"
++    assert backend.diagnostics.fallback_reason == "terminator API unavailable"
++    backend.close()
+diff --git a/tests/test_lexicon_adapters.py b/tests/test_lexicon_adapters.py
+new file mode 100644
+index 0000000..ac75f08
+--- /dev/null
++++ b/tests/test_lexicon_adapters.py
+@@ -0,0 +1,98 @@
++from __future__ import annotations
++
++import sys
++import types
++from pathlib import Path
++
++import pytest
++
++from piperg2p.errors import LexiconDependencyError, LexiconResourceError
++from piperg2p.lexicons import G2LexLookup, LexphonLookup
++
++
++def test_lexphon_is_lazy_and_uses_lexicon_only_batch_lookup(monkeypatch):
++    calls: list[tuple[str, object]] = []
++
++    class Runtime:
++        def __init__(self, language, *, lexicons, store, fallback):
++            calls.append((language, (tuple(lexicons), store, fallback)))
++
++        def lookup_lexicon(self, word, *, tag=None):
++            if word == "known":
++                return types.SimpleNamespace(text="noʊn", source="lexphon", matched_key=word)
++            return None
++
++        def lookup_many(self, words, *, tag=None):
++            return tuple(self.lookup_lexicon(word, tag=tag) for word in words)
++
++        def close(self):
++            calls.append(("close", None))
++
++    monkeypatch.setitem(sys.modules, "lexphon", types.SimpleNamespace(Phonemizer=Runtime))
++    lookup = LexphonLookup("de-DE", ("first", "second"), store="store")
++    assert calls == []
++
++    assert lookup.lookup("known").pronunciation == "noʊn"
++    assert calls == [("de-DE", (("first", "second"), "store", None))]
++    result = lookup.lookup_many(("known", "missing"))
++    assert result[0].matched_key == "known"
++    assert result[1] is None
++    lookup.close()
++    lookup.close()
++    assert calls[-1] == ("close", None)
++
++
++def test_lexphon_missing_dependency_is_actionable(monkeypatch):
++    monkeypatch.setitem(sys.modules, "lexphon", None)
++    with pytest.raises(LexiconDependencyError, match=r"piperg2p\[lexphon\]"):
++        LexphonLookup("en-us", ("en-us:espeak",)).lookup("word")
++
++
++def test_lexphon_resource_errors_are_not_misses(monkeypatch):
++    class Runtime:
++        def __init__(self, *args, **kwargs):
++            raise RuntimeError("not installed")
++
++    monkeypatch.setitem(sys.modules, "lexphon", types.SimpleNamespace(Phonemizer=Runtime))
++    with pytest.raises(LexiconResourceError, match="Could not open Lexphon"):
++        LexphonLookup("en-us", ("missing",)).lookup("word")
++
++
++def test_g2lex_preserves_asset_order_and_forwards_tag(monkeypatch, tmp_path):
++    first = tmp_path / "first.g2lex"
++    second = tmp_path / "second.g2lex"
++    first.write_bytes(b"first")
++    second.write_bytes(b"second")
++    calls: list[tuple[str, str | None]] = []
++
++    class Asset:
++        def __init__(self, name):
++            self.name = name
++            self.closed = False
++
++        def lookup(self, word, *, tag=None):
++            calls.append((self.name, tag))
++            if self.name == "second.g2lex" and word == "known":
++                return "kˈnoʊn"
++            return None
++
++        def close(self):
++            self.closed = True
++
++    assets = {first.name: Asset(first.name), second.name: Asset(second.name)}
++    fake = types.SimpleNamespace(open=lambda path: assets[Path(path).name])
++    monkeypatch.setitem(sys.modules, "g2lex", fake)
++
++    lookup = G2LexLookup((first, second), language="en-US")
++    assert lookup.lookup("known", tag="proper").pronunciation == "kˈnoʊn"
++    assert calls == [(first.name, "proper"), (second.name, "proper")]
++    assert lookup.lookup("missing") is None
++    lookup.close()
++    lookup.close()
++    assert assets[first.name].closed
++    assert assets[second.name].closed
++
++
++def test_g2lex_missing_asset_has_focused_error():
++    with pytest.raises(LexiconResourceError, match="does not exist"):
++        G2LexLookup(("missing.g2lex",)).lookup("word")
+diff --git a/tests/test_lexicon_overlay.py b/tests/test_lexicon_overlay.py
+new file mode 100644
+index 0000000..dc889d7
+--- /dev/null
++++ b/tests/test_lexicon_overlay.py
+@@ -0,0 +1,130 @@
++from __future__ import annotations
++
++from dataclasses import dataclass
++
++import pytest
++
++from piperg2p import BackendDiagnostics, PiperFrontend, VoiceConfig
++from piperg2p.errors import LexiconConfigurationError, MissingPhonemeError
++from piperg2p.lexicons.base import LexiconDiagnostics, LexiconPronunciation
++from piperg2p.lexicons.overlay import compose_lexicon_overlay
++from piperg2p.raw_blocks import parse_raw_blocks
++
++
++@dataclass
++class FakeLookup:
++    values: dict[str, str]
++
++    def __post_init__(self):
++        self.words: list[str] = []
++        self.closed = False
++
++    @property
++    def diagnostics(self):
++        return LexiconDiagnostics(True, "fake", "en-us", ("fake",), "override")
++
++    def lookup(self, word, *, tag=None):
++        self.words.append(word)
++        value = self.values.get(word)
++        return LexiconPronunciation(value, "fake", matched_key=word) if value else None
++
++    def lookup_many(self, words, *, tag=None):
++        self.words.extend(words)
++        return tuple(
++            LexiconPronunciation(self.values[word], "fake", matched_key=word)
++            if word in self.values
++            else None
++            for word in words
++        )
++
++    def close(self):
++        self.closed = True
++
++
++class FakeBackend:
++    def __init__(self):
++        self.calls: list[str] = []
++        self.diagnostics = BackendDiagnostics(implementation="fake")
++        self.closed = False
++
++    def phonemize(self, text, *, voice):
++        self.calls.append(text)
++        return [[*text]] if text else []
++
++    def close(self):
++        self.closed = True
++
++
++def test_overlay_hit_bypasses_espeak_and_coalesces_misses():
++    lookup = FakeLookup({"special": "Q"})
++    backend = FakeBackend()
++    groups = compose_lexicon_overlay(
++        parse_raw_blocks("alpha special beta gamma"),
++        lookup,
++        lambda text: backend.phonemize(text, voice="en-us"),
++    )
++    assert backend.calls == ["alpha ", " beta gamma"]
++    assert lookup.words == ["alpha", "special", "beta", "gamma"]
++    assert groups == [[*"alpha ", "Q", *" beta gamma"]]
++
++
++def test_overlay_raw_block_has_precedence_over_lookup():
++    lookup = FakeLookup({"known": "Q", "RAW": "R"})
++    backend = FakeBackend()
++
++    groups = compose_lexicon_overlay(
++        parse_raw_blocks("known [[RAW]] known"),
++        lookup,
++        lambda text: backend.phonemize(text, voice="en-us"),
++    )
++    assert lookup.words == ["known", "known"]
++    assert groups == [["Q", " ", "R", "A", "W", " ", "Q"]]
++
++
++def _config():
++    symbols = {"_": 0, "^": 1, "$": 2}
++    for value in "abcdefghijklmnopqrstuvwxyz Q ":
++        symbols.setdefault(value, len(symbols))
++    return VoiceConfig.from_dict(
++        {
++            "num_symbols": len(symbols),
++            "num_speakers": 1,
++            "audio": {"sample_rate": 22050},
++            "phoneme_type": "espeak",
++            "phoneme_id_map": symbols,
++        }
++    )
++
++
++def test_frontend_reports_injected_lexicon_and_closes_only_owned_backend():
++    lookup = FakeLookup({"known": "Q"})
++    backend = FakeBackend()
++    frontend = PiperFrontend(_config(), backend=backend, lexicon_backend=lookup, missing="error")
++    result = frontend.phonemize("known unknown")
++    assert result.diagnostics.lexicon.implementation == "fake"
++    assert result.sentences[0].phonemes == ("Q", " ", "u", "n", "k", "n", "o", "w", "n")
++    frontend.close()
++    assert backend.closed
++    assert not lookup.closed
++
++
++def test_frontend_rejects_lexicons_for_non_espeak_and_conflicting_sources():
++    text_config = VoiceConfig.from_dict(
++        {
++            "num_symbols": 4,
++            "num_speakers": 1,
++            "audio": {"sample_rate": 22050},
++            "phoneme_type": "text",
++            "phoneme_id_map": {"_": 0, "^": 1, "$": 2, "a": 3},
++        }
++    )
++    with pytest.raises(LexiconConfigurationError, match="only supports"):
++        PiperFrontend(text_config, lexicons=("id",), backend=FakeBackend())
++    with pytest.raises(LexiconConfigurationError, match="mutually exclusive"):
++        PiperFrontend(_config(), lexicons=("id",), lexicon_backend=FakeLookup({}), backend=FakeBackend())
++
++
++def test_unencodable_hit_uses_existing_missing_policy():
++    lookup = FakeLookup({"known": "Z"})
++    with pytest.raises(MissingPhonemeError):
++        PiperFrontend(_config(), backend=FakeBackend(), lexicon_backend=lookup, missing="error").phonemize("known")
+diff --git a/tests/test_lexicon_overlay_extra.py b/tests/test_lexicon_overlay_extra.py
+new file mode 100644
+index 0000000..b61957f
+--- /dev/null
++++ b/tests/test_lexicon_overlay_extra.py
+@@ -0,0 +1,84 @@
++from __future__ import annotations
++
++from dataclasses import dataclass
++
++from piperg2p.diagnostics import BackendDiagnostics
++from piperg2p.lexicons.base import LexiconDiagnostics, LexiconPronunciation
++from piperg2p.lexicons.overlay import compose_lexicon_overlay
++from piperg2p.raw_blocks import parse_raw_blocks
++
++
++@dataclass
++class FakeLookup:
++    values: dict[str, str]
++
++    def __post_init__(self):
++        self.words: list[str] = []
++
++    @property
++    def diagnostics(self):
++        return LexiconDiagnostics(True, "fake", "en-us", ("fake",), "override")
++
++    def lookup_many(self, words, *, tag=None):
++        self.words.extend(words)
++        return tuple(
++            LexiconPronunciation(self.values[word], "fake", matched_key=word)
++            if word in self.values
++            else None
++            for word in words
++        )
++
++
++class FakeBackend:
++    def __init__(self):
++        self.calls: list[str] = []
++        self.diagnostics = BackendDiagnostics(implementation="fake")
++
++    def phonemize(self, text, *, voice):
++        self.calls.append(text)
++        return [[*text]] if text else []
++
++
++def test_adjacent_hits_do_not_create_empty_fallback_calls():
++    lookup = FakeLookup({"special": "Q", "name": "N"})
++    backend = FakeBackend()
++    groups = compose_lexicon_overlay(
++        parse_raw_blocks("alpha special name beta"),
++        lookup,
++        lambda text: backend.phonemize(text, voice="en-us"),
++    )
++    assert backend.calls == ["alpha ", " beta"]
++    assert groups == [[*"alpha ", "Q", " ", "N", *" beta"]]
++
++
++def test_punctuation_remains_in_fallback_source_chunk():
++    lookup = FakeLookup({"known": "Q"})
++    backend = FakeBackend()
++    groups = compose_lexicon_overlay(
++        parse_raw_blocks("known, unknown."),
++        lookup,
++        lambda text: backend.phonemize(text, voice="en-us"),
++    )
++    assert backend.calls == [", unknown."]
++    assert groups == [["Q", *", unknown."]]
++
++
++def test_lexicon_pronunciation_is_normalized_to_nfd():
++    lookup = FakeLookup({"known": "é"})
++    groups = compose_lexicon_overlay(
++        parse_raw_blocks("known"),
++        lookup,
++        lambda text: [],
++    )
++    assert groups == [["e", "\u0301"]]
++
++
++def test_vowel_clusters_merge_after_raw_and_lexicon_composition():
++    lookup = FakeLookup({"known": "a"})
++    groups = compose_lexicon_overlay(
++        parse_raw_blocks("known[[b]]"),
++        lookup,
++        lambda text: [],
++        vowel_clusters=frozenset({("a", "b")}),
++    )
++    assert groups == [["ab"]]
+diff --git a/tests/test_lexicon_spans.py b/tests/test_lexicon_spans.py
+new file mode 100644
+index 0000000..70b502a
+--- /dev/null
++++ b/tests/test_lexicon_spans.py
+@@ -0,0 +1,21 @@
++from piperg2p.lexicons.spans import SourceSpan, scan_source_spans, word_spans
++
++
++def test_source_scanner_preserves_nonword_text_and_offsets():
++    text = "Hi, naïve-world!"
++    spans = scan_source_spans(text)
++    assert spans == (
++        SourceSpan("Hi", 0, 2, "word"),
++        SourceSpan(", ", 2, 4, "other"),
++        SourceSpan("naïve-world", 4, 15, "word"),
++        SourceSpan("!", 15, 16, "other"),
++    )
++
++
++def test_word_scanner_handles_numbers_combining_marks_and_apostrophes():
++    text = "v2 l'été cafe\u0301 123"
++    assert [span.text for span in word_spans(text)] == ["v2", "l'été", "café", "123"]
++
++
++def test_hyphen_is_internal_only_when_surrounded_by_word_characters():
++    assert [span.text for span in word_spans("well-being - done-")] == ["well-being", "done"]
+diff --git a/tests/test_raw_spacing.py b/tests/test_raw_spacing.py
+new file mode 100644
+index 0000000..6c5f618
+--- /dev/null
++++ b/tests/test_raw_spacing.py
+@@ -0,0 +1,37 @@
++from piperg2p.raw_blocks import (
++    RawPhonemeSegment,
++    TextSegment,
++    compose_raw_segments,
++    needs_left_boundary_space,
++    needs_right_boundary_space,
++    parse_raw_blocks,
++)
++
++
++def phonemize(text: str):
++    return [[*text]] if text else []
++
++
++def test_raw_block_boundary_spacing_is_source_preserving():
++    cases = {
++        "ab [[c]] d": ["a", "b", " ", "c", " ", "d"],
++        "ab [[c]]d": ["a", "b", " ", "c", "d"],
++        "ab[[c]] d": ["a", "b", "c", " ", "d"],
++        "ab[[c]]d": ["a", "b", "c", "d"],
++    }
++    for text, expected in cases.items():
++        assert compose_raw_segments(parse_raw_blocks(text), phonemize) == [expected]
++
++
++def test_raw_segments_keep_offsets_for_shared_compositor():
++    segments = parse_raw_blocks("ab [[ c ]] d")
++    assert segments == [TextSegment("ab "), RawPhonemeSegment("c"), TextSegment(" d")]
++    assert (segments[0].source_start, segments[0].source_end) == (0, 3)
++    assert (segments[1].source_start, segments[1].source_end) == (3, 10)
++    assert (segments[2].source_start, segments[2].source_end) == (10, 12)
++
++
++def test_boundary_helpers_detect_explicit_source_whitespace():
++    assert needs_left_boundary_space("ab ", "c")
++    assert needs_right_boundary_space("c", " d")
++    assert not needs_left_boundary_space("ab", "c")
+diff --git a/tests/test_real_optional_integration.py b/tests/test_real_optional_integration.py
+new file mode 100644
+index 0000000..39ff812
+--- /dev/null
++++ b/tests/test_real_optional_integration.py
+@@ -0,0 +1,53 @@
++from __future__ import annotations
++
++import json
++
++import pytest
++
++from piperg2p import BackendUnavailableError, EspeakBackend, NativeEspeakProvider
++from piperg2p.lexicons import G2LexLookup
++
++
++def test_exact_native_epeak_clause_contract_if_provisioned():
++    try:
++        provider = NativeEspeakProvider(strict=True)
++    except BackendUnavailableError:
++        pytest.skip("terminator-capable eSpeak NG is not provisioned")
++    try:
++        clauses = provider.clauses("Hello, world.", "en-us")
++        assert provider.diagnostics.exact_clause_api
++        assert clauses[0].terminator == ","
++        assert clauses[-1].sentence_end
++    finally:
++        provider.close()
++
++
++def test_auto_backend_reports_exact_or_cli_fallback():
++    backend = EspeakBackend(mode="auto")
++    try:
++        if backend.diagnostics.parity == "exact":
++            assert backend.diagnostics.exact_clause_api
++        else:
++            assert backend.diagnostics.implementation == "cli"
++            assert backend.diagnostics.fallback_reason in {
++                "terminator API unavailable",
++            } or backend.diagnostics.fallback_reason
++    finally:
++        backend.close()
++
++
++def test_direct_g2lex_reads_reproducible_temporary_asset(tmp_path):
++    g2lex = pytest.importorskip("g2lex")
++    source = tmp_path / "words.json"
++    asset = tmp_path / "words.g2lex"
++    source.write_text(json.dumps({"known": "noʊn"}), encoding="utf-8")
++    g2lex.pack_file(
++        source,
++        asset,
++        input_format="json-map",
++        metadata={"language": "en-US", "pronunciation_alphabet": "ipa"},
++    )
++
++    with G2LexLookup((asset,), language="en-US") as lookup:
++        assert lookup.lookup("known").pronunciation == "noʊn"
++        assert lookup.lookup("unknown") is None
