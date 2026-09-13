@@ -1,5 +1,7 @@
 # Quick start
 
+The examples below pass prepared, speakable text. Semantic expansion belongs to the calling application, not PiperG2P.
+
 ```python
 from piperg2p import PiperFrontend
 

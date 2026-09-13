@@ -5,7 +5,10 @@ from __future__ import annotations
 import argparse
 import tarfile
 import zipfile
+from email.parser import Parser
 from pathlib import Path
+
+from packaging.requirements import Requirement
 
 
 def _wheel_version(path: Path) -> str:
@@ -17,6 +20,31 @@ def _wheel_version(path: Path) -> str:
     return next(
         row.removeprefix("Version: ") for row in rows if row.startswith("Version: ")
     )
+
+
+def _wheel_requirements(path: Path) -> list[Requirement]:
+    with zipfile.ZipFile(path) as archive:
+        metadata_name = next(
+            name for name in archive.namelist() if name.endswith(".dist-info/METADATA")
+        )
+        metadata_text = archive.read(metadata_name).decode("utf-8")
+
+    metadata = Parser().parsestr(metadata_text)
+    return [Requirement(value) for value in metadata.get_all("Requires-Dist", [])]
+
+
+FORBIDDEN_SEMANTIC_DEPENDENCIES = frozenset({"numeralform", "spokenform"})
+
+
+def _check_dependency_boundary(path: Path) -> None:
+    requirements = _wheel_requirements(path)
+    names = {item.name.casefold().replace("_", "-") for item in requirements}
+    forbidden = sorted(names & FORBIDDEN_SEMANTIC_DEPENDENCIES)
+    if forbidden:
+        raise SystemExit(
+            "wheel metadata contains forbidden semantic-preparation "
+            f"dependencies: {', '.join(forbidden)}"
+        )
 
 
 def _sdist_version(path: Path) -> str:
@@ -68,6 +96,7 @@ def main() -> int:
         raise SystemExit("dist must contain exactly one wheel and one sdist")
     wheel_version = _check_wheel(wheels[0])
     sdist_version = _check_sdist(sdists[0])
+    _check_dependency_boundary(wheels[0])
     if wheel_version != sdist_version:
         raise SystemExit(
             f"artifact version mismatch: wheel={wheel_version!r}, "

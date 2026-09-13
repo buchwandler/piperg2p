@@ -23,6 +23,16 @@ The native clause API is labeled `exact` only when it is available. The CLI path
 pip install .
 ```
 
+PiperG2P consumes prepared, speakable text. It does not own written-to-spoken
+semantic preparation such as number, unit, currency, date, or abbreviation
+expansion. Numeralform and Spokenform are intentionally not PiperG2P
+dependencies. In the intended stack, semantic preparation is composed above
+PiperG2P (for example by PiperSynth through Spokenform).
+
+This boundary does not change eSpeak compatibility: PiperG2P passes prepared
+text to the selected backend, and backend-specific pronunciation behavior
+remains unchanged.
+
 Install eSpeak NG separately for eSpeak voices. Text voices need no optional runtime package.
 
 ## Usage
