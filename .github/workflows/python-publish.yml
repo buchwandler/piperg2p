@@ -33,7 +33,7 @@ jobs:
           ruff check lexphon tests
           ruff format --check piperg2p tests
           mypy lexphon
-          pytest
+          python -m pytest
       - name: Build package
         run: python -m build
       - name: Verify release versions

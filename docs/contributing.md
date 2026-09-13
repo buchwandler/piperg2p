@@ -3,7 +3,7 @@
 Run the core checks before submitting changes:
 
 ```bash
-pytest -q
+python -m pytest -q
 python -m build
 ```
 

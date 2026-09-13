@@ -21,7 +21,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e '.[dev]'
-      - run: pytest -q
+      - run: python -m pytest -q
       - run: python -m build
       - run: python benchmarks/benchmark_espeak.py --quick --suite core --candidate cli --reference-source golden --golden benchmarks/goldens/espeak_ipa3_en-us.json --format summary
 
@@ -38,7 +38,7 @@ jobs:
       - run: sudo apt-get install --yes espeak-ng libespeak-ng-dev
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e '.[dev]'
-      - run: pytest -q -m espeak tests/test_clause_backend.py tests/test_espeak_exact_contract.py tests/test_real_optional_integration.py
+      - run: python -m pytest -q -m espeak tests/test_clause_backend.py tests/test_espeak_exact_contract.py tests/test_real_optional_integration.py
       - run: ruff check .
       - run: python -m build
 
@@ -53,7 +53,7 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e '.[dev,lexicons]'
-      - run: pytest -q tests/test_lexicon_adapters.py tests/test_lexicon_spans.py tests/test_lexicon_overlay.py tests/test_lexicon_overlay_extra.py tests/test_real_optional_integration.py
+      - run: python -m pytest -q tests/test_lexicon_adapters.py tests/test_lexicon_spans.py tests/test_lexicon_overlay.py tests/test_lexicon_overlay_extra.py tests/test_real_optional_integration.py
       - run: ruff check .
 
   direct-g2lex:
@@ -67,7 +67,7 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e '.[dev,g2lex]'
-      - run: pytest -q tests/test_lexicon_adapters.py tests/test_real_optional_integration.py
+      - run: python -m pytest -q tests/test_lexicon_adapters.py tests/test_real_optional_integration.py
       - run: ruff check .
 
   reference:
