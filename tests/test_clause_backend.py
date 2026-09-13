@@ -85,7 +85,10 @@ def test_native_provider_can_initialize_if_library_is_installed():
 def test_auto_backend_prefers_native_or_diagnoses_cli():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        backend = EspeakBackend(mode="auto")
+        try:
+            backend = EspeakBackend(mode="auto")
+        except BackendUnavailableError:
+            pytest.skip("eSpeak native library and CLI are unavailable")
     assert backend.diagnostics.parity in {"exact", "best-effort"}
     if backend.diagnostics.parity == "best-effort":
         assert any(issubclass(item.category, BackendFallbackWarning) for item in caught)

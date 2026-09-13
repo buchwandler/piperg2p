@@ -23,7 +23,10 @@ def test_exact_native_epeak_clause_contract_if_provisioned():
 
 
 def test_auto_backend_reports_exact_or_cli_fallback():
-    backend = EspeakBackend(mode="auto")
+    try:
+        backend = EspeakBackend(mode="auto")
+    except BackendUnavailableError:
+        pytest.skip("eSpeak native library and CLI are unavailable")
     try:
         if backend.diagnostics.parity == "exact":
             assert backend.diagnostics.exact_clause_api
