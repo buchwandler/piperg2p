@@ -3,8 +3,10 @@ from __future__ import annotations
 import warnings
 from collections.abc import Mapping, Sequence
 from enum import Enum
+from pathlib import Path
 from typing import Protocol
 
+from .config import VoiceConfig
 from .errors import ConfigError, MissingPhonemeError, MissingPhonemeWarning
 from .types import EncodeResult
 
@@ -121,3 +123,46 @@ def encode_pinyin(
     missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN,
 ) -> EncodeResult:
     return PinyinEncoder().encode(phonemes, id_map, missing)
+
+
+def ids_to_phonemes(ids: Sequence[int], config: object) -> str:
+    """Decode framed Piper IDs using one explicit voice configuration."""
+    if not isinstance(config, VoiceConfig):
+        if isinstance(config, (str, Path)):
+            config = VoiceConfig.from_json(config)
+        elif isinstance(config, Mapping):
+            config = VoiceConfig.from_dict(config)
+        else:
+            raise TypeError("config must be a VoiceConfig, path, or mapping")
+    values = tuple(int(value) for value in ids)
+    bos = tuple(config.phoneme_id_map[BOS])
+    pad = tuple(config.phoneme_id_map[PAD])
+    eos = tuple(config.phoneme_id_map[EOS])
+    if values[: len(bos) + len(pad)] == bos + pad:
+        values = values[len(bos) + len(pad) :]
+    if values[-len(eos) :] == eos:
+        values = values[: -len(eos)]
+    candidates: dict[tuple[int, ...], str] = {}
+    for symbol, symbol_ids in config.phoneme_id_map.items():
+        if symbol in {BOS, PAD, EOS}:
+            continue
+        key = tuple(symbol_ids)
+        previous = candidates.get(key)
+        if previous is not None and previous != symbol:
+            raise ConfigError(f"ambiguous ID mapping for {key!r}: {previous!r}, {symbol!r}")
+        candidates[key] = symbol
+    keys = sorted(candidates, key=len, reverse=True)
+    output: list[str] = []
+    position = 0
+    while position < len(values):
+        matches = [key for key in keys if values[position : position + len(key)] == key]
+        if not matches:
+            raise ConfigError(f"cannot decode Piper ID sequence at position {position}")
+        longest = matches[0]
+        if len(matches) > 1 and len(matches[1]) == len(longest):
+            raise ConfigError(f"ambiguous Piper ID sequence at position {position}")
+        output.append(candidates[longest])
+        position += len(longest)
+        if values[position : position + len(pad)] == pad:
+            position += len(pad)
+    return "".join(output)

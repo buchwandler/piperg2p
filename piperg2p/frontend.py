@@ -37,7 +37,9 @@ class PiperFrontend:
         lexicons: Sequence[str] = (),
         lexicon_store: Any = None,
         lexicon_backend: PronunciationLookup | None = None,
+        use_espeak_fallback: bool = True,
     ) -> None:
+        self.use_espeak_fallback = use_espeak_fallback
         self.config = config
         self.missing = MissingPhonemePolicy(missing)
         self._spec = spec_for(config)
@@ -137,7 +139,9 @@ class PiperFrontend:
             lexicon=self._lexicon_diagnostics(),
         )
 
-    def phonemize_prepared(self, text: str) -> PhonemizeResult:
+    def phonemize_prepared(
+        self, text: str, *, annotations: Sequence[Any] | None = None
+    ) -> PhonemizeResult:
         if self.config.phoneme_type is PhonemeType.ESPEAK:
             segments = parse_raw_blocks(text)
             if self._lexicon_enabled:
@@ -149,6 +153,8 @@ class PiperFrontend:
                         value, voice=self.config.espeak_voice
                     ),
                     vowel_clusters=self.config.vowel_clusters,
+                    fallback=self.use_espeak_fallback,
+                    annotations=annotations or (),
                 )
             else:
                 groups = compose_raw_segments(
@@ -173,10 +179,10 @@ class PiperFrontend:
             )
             warning_messages.extend(encoded.warnings)
         return PhonemizeResult(
-            text=text,
+            clean_text=text,
             sentences=tuple(sentences),
             diagnostics=self.diagnostics,
-            warnings=tuple(warning_messages),
+            warnings=warning_messages,
         )
 
     phonemize = phonemize_prepared

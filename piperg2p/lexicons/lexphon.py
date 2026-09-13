@@ -64,7 +64,7 @@ class LexphonLookup:
         if self._runtime is not None:
             return self._runtime
         try:
-            import lexphon
+            import lexphon  # type: ignore[import-not-found]
         except ImportError as exc:
             raise LexiconDependencyError(
                 "Lexphon support requires the optional 'lexphon' extra. "

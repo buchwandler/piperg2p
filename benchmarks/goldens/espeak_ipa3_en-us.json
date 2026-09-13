@@ -1,0 +1,13 @@
+{
+  "metadata": {
+    "source": "espeak-ng",
+    "version": "1.52.0.1 local capture"
+  },
+  "cases": [
+    {"id": "hello", "raw": "həlˈo‍ʊ"},
+    {"id": "world", "raw": "wˈɜːld"},
+    {"id": "church", "raw": "t‍ʃˈɜːt‍ʃ"},
+    {"id": "cafe", "raw": "kæfˈe‍ɪ"},
+    {"id": "phrase", "raw": "həlˈo‍ʊ wˈɜːld"}
+  ]
+}

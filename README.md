@@ -53,3 +53,19 @@ Compatibility is measured against pinned reference profiles, not a moving upstre
 ## Independence
 
 The runtime package has no Piper dependency, does not import Piper, and does not bundle Piper GPL assets. Reference corpus metadata is development evidence only.
+
+## Sibling-style API
+
+The high-level API keeps Piper voice configuration explicit while matching the shared development vocabulary used by sibling frontends:
+
+```python
+from piperg2p import phonemize_prepared
+
+result = phonemize_prepared(
+    "Hello world", language="en-us", config="voice.onnx.json"
+)
+print(result.phonemes)
+print(result.token_ids)
+```
+
+Use `get_g2p(language, config=...)` for reuse. `tokenize`, `OverrideSpan`, `TokenAnnotation`, marker helpers, bounded `cache_info`, and `ids_to_phonemes` are also exported. The API never downloads models or lexicons. See `examples/README.md` for the twelve executable examples.

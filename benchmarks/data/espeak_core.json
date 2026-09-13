@@ -1,0 +1,1 @@
+{"profile": {"name": "espeak-ipa3-core", "reference": "direct eSpeak --ipa=3"}, "cases": [{"id": "hello", "text": "hello", "suite": "core"}, {"id": "world", "text": "world", "suite": "core"}, {"id": "church", "text": "church", "suite": "core"}, {"id": "cafe", "text": "café", "suite": "core"}, {"id": "phrase", "text": "hello world", "suite": "core"}]}

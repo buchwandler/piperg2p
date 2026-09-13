@@ -50,6 +50,15 @@ class EspeakBackend:
                     fallback_reason = "terminator API unavailable"
                 else:
                     fallback_reason = f"{type(exc).__name__}: {exc}"
+                self._provider = EspeakCliBackend(
+                    executable=self.executable,
+                    data_path=self.data,
+                    vowel_clusters=self.vowel_clusters
+                    if self.merge_vowel_clusters
+                    else frozenset(),
+                    timeout=self.timeout,
+                )
+        else:
             self._provider = EspeakCliBackend(
                 executable=self.executable,
                 data_path=self.data,

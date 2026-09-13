@@ -72,3 +72,16 @@ A lexicon hit containing a symbol absent from the voice map is not silently repl
 Lexicon lookup/resource failures are errors, not normal misses. Optional packages are imported only when an adapter is selected. Core imports and eSpeak-only frontends do not require Lexphon or G2Lex.
 
 Mixed lexicon/eSpeak sentences can differ from pure eSpeak because selected source spans are intentionally converted independently. Do not claim bit-identical upstream Piper output for lexicon-first mode.
+
+## Discovery and evidence API
+
+Installed pronunciation assets can be inspected without network access:
+
+```python
+from piperg2p import available_lexicons, lexicon_info
+
+for name in available_lexicons("de"):
+    print(name, lexicon_info("de", name))
+```
+
+`g2p.lexicon_evidence(word, tag=...)` returns provenance for a selected hit. Set `use_espeak_fallback=False` to make a lexicon miss explicit instead of sending it to live eSpeak.
