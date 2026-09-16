@@ -10,7 +10,7 @@
 ## Delivered scope
 
 - `text` phoneme voices with no eSpeak dependency.
-- `espeak` voices through a native eSpeak NG public API binding or an explicit CLI fallback.
+- `espeak` voices through `espeakng-runtime`, which provides native eSpeak NG access and CLI fallback while PiperG2P retains Piper-specific phoneme composition.
 - Unicode NFD normalization and voice-specific ID maps.
 - Sentence-grouped results and raw `[[ ... ]]` phoneme blocks in eSpeak mode.
 - Immutable diagnostics, typed configuration, errors, and missing-phoneme reporting.
@@ -29,9 +29,9 @@ PiperG2P has no runtime dependency on Spokenform or Numeralform. Installing eith
 
 This boundary does not change eSpeak compatibility: PiperG2P passes prepared text to the selected backend, and backend-specific pronunciation behavior remains unchanged.
 
-Install eSpeak NG separately for eSpeak voices. Text voices need no optional runtime package.
+Install PiperG2P normally. It depends on `espeakng-runtime`, which owns eSpeak discovery and execution. Text voices do not invoke eSpeak. For a bundled loader and data support, install `piperg2p[espeak-direct]`.
 
-For eSpeak voices, `auto` mode checks native-library capabilities and selects the first library providing Piper's exact `espeak_TextToPhonemesWithTerminator` clause API. If none is available, it uses the CLI with best-effort parity and a visible fallback diagnostic. Use `native` to require exact native support or `cli` to request the CLI directly. `inspect_espeak()` reports these capabilities without initializing eSpeak.
+`PIPERG2P_ESPEAK_EXECUTABLE`, `PIPERG2P_ESPEAK_LIBRARY`, and `PIPERG2P_ESPEAK_DATA` remain supported compatibility variables. Explicit Piper constructor arguments take precedence over these variables, which take precedence over `ESPEAKNG_RUNTIME_*` variables and runtime discovery.
 
 ## Semantic preparation composition
 

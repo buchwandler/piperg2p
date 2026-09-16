@@ -15,6 +15,17 @@ class Clause:
     sentence_end: bool = False
 
 
+from espeakng_runtime import Clause as RuntimeClause
+
+
+def from_runtime_clause(value: RuntimeClause) -> Clause:
+    return Clause(
+        phonemes=value.phonemes,
+        terminator=value.terminator,
+        sentence_end=value.sentence_end,
+    )
+
+
 def merge_vowel_clusters(
     phones: list[str], clusters: frozenset[tuple[str, ...]]
 ) -> list[str]:

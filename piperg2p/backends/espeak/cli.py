@@ -1,71 +1,74 @@
 from __future__ import annotations
 
-import subprocess
 from dataclasses import dataclass
 
+from espeakng_runtime import EspeakRuntime
+from espeakng_runtime.errors import (
+    CapabilityError,
+    EspeakConflictError,
+    EspeakUnavailableError,
+    VoiceNotFoundError,
+)
+from espeakng_runtime.errors import PhonemizationError as RuntimePhonemizationError
+
 from ...diagnostics import BackendDiagnostics
-from ...errors import PhonemizationError
+from ...errors import BackendUnavailableError, PhonemizationError
+from .backend import _diagnostics_from_runtime, _runtime_paths
 from .clauses import Clause, compose_clauses, split_cli_clauses
-from .discovery import discover
 
 
 @dataclass
 class EspeakCliBackend:
+    """Compatibility facade for Piper's historical CLI backend."""
+
     executable: str | None = None
     vowel_clusters: frozenset[tuple[str, ...]] = frozenset()
     timeout: float | None = None
     data_path: str | None = None
 
     def __post_init__(self) -> None:
-        paths = discover(executable=self.executable, data=self.data_path)
-        self.executable = paths.executable
-        self.data_path = paths.data
-        self.discovery_source = paths.source
-        self._diagnostics = BackendDiagnostics(
-            requested_mode="cli",
-            implementation="cli",
+        executable, _, data = _runtime_paths(
             executable=self.executable,
-            data_path=self.data_path,
-            parity="best-effort",
-            discovery_source=self.discovery_source,
+            library=None,
+            data=self.data_path,
         )
+        try:
+            self._runtime = EspeakRuntime(
+                mode="cli",
+                executable=executable,
+                data=data,
+                timeout=self.timeout,
+            )
+        except (EspeakUnavailableError, EspeakConflictError) as exc:
+            raise BackendUnavailableError(str(exc)) from exc
+        info = self._runtime.info
+        self.executable = info.executable
+        self.data_path = info.data
+        self._diagnostics = _diagnostics_from_runtime(info)
 
     @property
     def diagnostics(self) -> BackendDiagnostics:
         return self._diagnostics
 
-    def _ipa(self, text: str, voice: str) -> str:
-        if not text.strip():
-            return ""
-        try:
-            process = subprocess.run(
-                [self.executable or "", "-q", "--ipa=3", "-v", voice, "--stdin"],
-                # eSpeak only flushes the final clause completely when stdin
-                # contains a line terminator. Without one, some versions
-                # return a truncated pronunciation for the final word.
-                input=text if text.endswith("\n") else f"{text}\n",
-                encoding="utf-8",
-                errors="strict",
-                capture_output=True,
-                check=False,
-                timeout=self.timeout,
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            raise PhonemizationError(f"eSpeak CLI invocation failed: {exc}") from exc
-        if process.returncode:
-            raise PhonemizationError(
-                f"eSpeak failed ({process.returncode}): {process.stderr.strip()}"
-            )
-        return process.stdout.strip("\r\n ")
-
     def phonemize(self, text: str, *, voice: str) -> list[list[str]]:
         if not text:
             return []
-        clauses = [
-            Clause(self._ipa(body, voice), terminator, sentence_end)
-            for body, terminator, sentence_end in split_cli_clauses(text)
-        ]
+        try:
+            clauses = [
+                Clause(
+                    phonemes=self._runtime.phonemize(body, voice=voice),
+                    terminator=terminator,
+                    sentence_end=sentence_end,
+                )
+                for body, terminator, sentence_end in split_cli_clauses(text)
+            ]
+        except (VoiceNotFoundError, RuntimePhonemizationError) as exc:
+            raise PhonemizationError(str(exc)) from exc
+        except CapabilityError as exc:
+            raise BackendUnavailableError(str(exc)) from exc
+        except EspeakConflictError as exc:
+            raise BackendUnavailableError(str(exc)) from exc
         return compose_clauses(clauses, self.vowel_clusters)
 
     def close(self) -> None:
-        return None
+        self._runtime.close()

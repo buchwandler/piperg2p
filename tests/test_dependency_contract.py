@@ -5,6 +5,7 @@ from importlib.metadata import requires
 from packaging.requirements import Requirement
 
 FORBIDDEN_SEMANTIC_DEPENDENCIES = frozenset({"numeralform", "spokenform"})
+ALLOWED_CORE_RUNTIME_DEPENDENCIES = frozenset({"espeakng-runtime"})
 
 
 def _piperg2p_requirements() -> list[Requirement]:
@@ -23,10 +24,22 @@ def test_semantic_packages_are_not_piperg2p_dependencies() -> None:
     assert names.isdisjoint(FORBIDDEN_SEMANTIC_DEPENDENCIES)
 
 
-def test_core_has_no_mandatory_python_runtime_dependencies() -> None:
+def test_core_runtime_dependencies_are_intentional() -> None:
     core_requirements = [
         item
         for item in _piperg2p_requirements()
         if item.marker is None or "extra" not in str(item.marker)
     ]
-    assert core_requirements == []
+    assert {
+        _normalized_name(item) for item in core_requirements
+    } == ALLOWED_CORE_RUNTIME_DEPENDENCIES
+
+
+def test_espeakng_runtime_floor() -> None:
+    requirement = next(
+        item
+        for item in _piperg2p_requirements()
+        if _normalized_name(item) == "espeakng-runtime" and item.marker is None
+    )
+    assert ">=0.1.0" in str(requirement.specifier)
+    assert "<0.2" in str(requirement.specifier)

@@ -1,5 +1,6 @@
-"""Native eSpeak manager implementation lives in native.py."""
+"""Deprecated compatibility module.
 
-from .native import _MANAGER
+Native eSpeak lifetime management is owned by :mod:`espeakng_runtime`.
+"""
 
-__all__ = ["_MANAGER"]
+__all__: tuple[str, ...] = ()

@@ -15,7 +15,9 @@ requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 authors = [{name = "piperg2p contributors"}]
 keywords = ["tts", "piper", "g2p", "phonemizer", "onnx", "espeak"]
-dependencies = []
+dependencies = [
+  "espeakng-runtime>=0.1.0,<0.2",
+]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "License :: OSI Approved :: Apache Software License",
@@ -40,8 +42,7 @@ dev = [
 g2lex = ["g2lex>=0.1.8,<0.2"]
 lexphon = ["lexphon>=0.2.3,<0.3"]
 espeak-direct = [
-  "espeakng-loader>=0.1.0",
-  "dlinfo>=1.2.1; sys_platform != 'win32' and sys_platform != 'android'",
+  "espeakng-runtime[bundled]>=0.1.0,<0.2",
 ]
 lexicons = ["lexphon>=0.2.3,<0.3"]
 

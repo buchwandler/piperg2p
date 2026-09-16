@@ -1,6 +1,6 @@
 # Installation
 
-The core package supports Python 3.10 and newer and has no mandatory non-standard runtime dependency.
+The core package supports Python 3.10 and newer and depends on `espeakng-runtime` for eSpeak infrastructure. It has no dependency on semantic preparation packages.
 
 ```bash
 pip install .
@@ -38,11 +38,17 @@ result = phonemize_prepared(
 ```
 
 Spokenform is not a PiperG2P core, optional-extra, development, or core-test dependency.
-The `dev` extra provides pytest, coverage, ruff, mypy, and build tooling. eSpeak NG is a system dependency for eSpeak voices. Its executable, shared library, and data directory can be selected with constructor arguments or `PIPERG2P_ESPEAK_EXECUTABLE`, `PIPERG2P_ESPEAK_LIBRARY`, and `PIPERG2P_ESPEAK_DATA`.
+The `dev` extra provides pytest, coverage, ruff, mypy, and build tooling. `espeakng-runtime` owns eSpeak discovery, native execution, CLI fallback, and lifetime management. Its executable, shared library, and data directory can be selected with Piper constructor arguments or the legacy `PIPERG2P_ESPEAK_EXECUTABLE`, `PIPERG2P_ESPEAK_LIBRARY`, and `PIPERG2P_ESPEAK_DATA` variables.
 
-For exact Piper native parity, ordinary eSpeak availability is not sufficient. Auto mode probes each discovered native candidate and requires `espeak_TextToPhonemesWithTerminator` before selecting it. Native mode requires that exact symbol, while CLI mode remains available as a best-effort fallback. The optional `espeakng-loader` is one candidate in this scan, not proof of exact capability.
+For bundled loader support:
 
-Use `inspect_espeak()` for non-initializing troubleshooting. It reports CLI availability, the selected exact library, and immutable probe results without emitting fallback warnings. Explicit `library=` and `PIPERG2P_ESPEAK_LIBRARY` overrides remain authoritative, so an incompatible configured library is not replaced by another native candidate.
+```bash
+pip install "piperg2p[espeak-direct]"
+```
+
+Runtime variables are `ESPEAKNG_RUNTIME_EXECUTABLE`, `ESPEAKNG_RUNTIME_LIBRARY`, and `ESPEAKNG_RUNTIME_DATA`. Precedence is explicit Piper constructor argument, legacy Piper variable, runtime variable, then runtime automatic discovery.
+
+For exact Piper native parity, ordinary eSpeak availability is not sufficient. Piper asks the runtime for an exact-capable native backend. Native mode requires that capability, auto mode falls back to CLI with a Piper warning, and CLI mode remains explicit best-effort behavior. `inspect_espeak()` is a Piper compatibility facade over runtime inspection.
 
 No frontend downloads models or makes network requests during phonemization.
 

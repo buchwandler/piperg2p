@@ -1,22 +1,101 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
+
+from espeakng_runtime import EspeakRuntime, RuntimeInfo, inspect_espeak
+from espeakng_runtime.errors import (
+    CapabilityError,
+    EspeakConflictError,
+    EspeakUnavailableError,
+    VoiceNotFoundError,
+)
+from espeakng_runtime.errors import PhonemizationError as RuntimePhonemizationError
 
 from ..._warnings import warn_external
 from ...diagnostics import BackendDiagnostics
-from ...errors import BackendFallbackWarning, BackendUnavailableError
-from . import discovery as discovery_module
-from .clauses import compose_clauses
-from .cli import EspeakCliBackend
-from .discovery import (
-    EspeakLibraryProbe,
-    EspeakNativeSelection,
-    maybe_find_executable,
-    select_exact_native,
+from ...errors import (
+    BackendFallbackWarning,
+    BackendUnavailableError,
+    PhonemizationError,
 )
-from .native import NativeEspeakProvider
+from .clauses import (
+    Clause,
+    compose_clauses,
+    from_runtime_clause,
+    split_cli_clauses,
+)
 
-discover = discovery_module.discover
+
+def _runtime_paths(
+    *,
+    executable: str | None,
+    library: str | None,
+    data: str | None,
+) -> tuple[str | None, str | None, str | None]:
+    return (
+        executable
+        if executable is not None
+        else os.getenv("PIPERG2P_ESPEAK_EXECUTABLE"),
+        library if library is not None else os.getenv("PIPERG2P_ESPEAK_LIBRARY"),
+        data if data is not None else os.getenv("PIPERG2P_ESPEAK_DATA"),
+    )
+
+
+def _legacy_source(source: str | None) -> str | None:
+    return "modern-loader" if source == "espeakng-loader" else source
+
+
+def _diagnostics_from_runtime(
+    info: RuntimeInfo,
+    *,
+    native_candidates: tuple[object, ...] = (),
+    warnings: tuple[str, ...] = (),
+) -> BackendDiagnostics:
+    from .discovery import EspeakLibraryProbe
+
+    candidates = tuple(
+        EspeakLibraryProbe(
+            library=value.library,
+            source=_legacy_source(value.source) or "unknown",
+            data=value.data,
+            loadable=value.loadable,
+            exact_clause_api=value.exact_clause_api,
+            error=value.error,
+        )
+        for value in native_candidates
+    )
+    return BackendDiagnostics(
+        requested_mode=info.requested_mode,
+        implementation=info.implementation,
+        executable=info.executable,
+        library_path=info.library,
+        data_path=info.data,
+        discovery_source=_legacy_source(info.source),
+        version=info.version,
+        exact_clause_api=info.exact_clause_api,
+        fallback_reason=info.fallback_reason,
+        parity=info.parity,
+        warnings=warnings,
+        native_candidates=candidates,
+    )
+
+
+def _piper_fallback_message(info: RuntimeInfo) -> str:
+    reason = info.fallback_reason or "runtime selected CLI best-effort mode"
+    if info.fallback_code == "exact-clause-api-unavailable":
+        prefix = "exact Piper eSpeak clause API unavailable; using CLI best-effort fallback: "
+    else:
+        prefix = "native eSpeak library unavailable; using CLI best-effort fallback: "
+    return prefix + reason
+
+
+def _raise_backend_unavailable(exc: Exception) -> None:
+    raise BackendUnavailableError(str(exc)) from exc
+
+
+def _raise_phonemization_error(exc: Exception) -> None:
+    raise PhonemizationError(str(exc)) from exc
 
 
 @dataclass
@@ -26,172 +105,98 @@ class EspeakBackend:
     library: str | None = None
     data: str | None = None
     vowel_clusters: frozenset[tuple[str, ...]] = frozenset()
-    strict_native: bool = False
     merge_vowel_clusters: bool = True
     timeout: float | None = None
 
     def __post_init__(self) -> None:
         if self.mode not in {"auto", "native", "cli"}:
             raise ValueError("eSpeak mode must be 'auto', 'native', or 'cli'")
-        self._provider: NativeEspeakProvider | EspeakCliBackend
-        selection: EspeakNativeSelection | None = None
-        fallback_code: str | None = None
-        fallback_detail: str | None = None
-
-        if self.mode == "cli":
-            self._provider = self._make_cli()
-        else:
-            selection = select_exact_native(
-                library=self.library,
-                executable=self.executable,
-                data=self.data,
-            )
-            if selection.candidate is not None:
-                try:
-                    self._provider = NativeEspeakProvider(
-                        library=selection.candidate.library,
-                        data=selection.candidate.data,
-                        executable=maybe_find_executable(self.executable),
-                        discovery_source=selection.candidate.source,
-                        strict=True,
-                    )
-                except (BackendUnavailableError, OSError) as exc:
-                    if "espeak_TextToPhonemesWithTerminator" in str(exc):
-                        fallback_code = "terminator API unavailable"
-                        fallback_detail = "terminator API unavailable"
-                    else:
-                        fallback_code = f"{type(exc).__name__}: {exc}"
-                        fallback_detail = str(exc)
-                    if self.mode == "native":
-                        raise
-                    try:
-                        self._provider = self._make_cli()
-                    except BackendUnavailableError as cli_exc:
-                        raise BackendUnavailableError(
-                            "no exact native Piper eSpeak library found; "
-                            "CLI fallback is unavailable"
-                        ) from cli_exc
-            elif self.mode == "native":
-                raise BackendUnavailableError(self._native_error(selection.probes))
-            else:
-                fallback_code, fallback_detail = self._native_failure_reason(
-                    selection.probes, selection.explicit
-                )
-                try:
-                    self._provider = self._make_cli()
-                except BackendUnavailableError as exc:
-                    raise BackendUnavailableError(
-                        "no exact native Piper eSpeak library found; "
-                        "CLI fallback is unavailable"
-                    ) from exc
-        provider_diagnostics = self._provider.diagnostics
-        native_candidates = selection.probes if selection is not None else ()
-        fallback_reason: str | None
-        if fallback_code is not None:
-            fallback_reason = fallback_code
-            message = self._fallback_warning(
-                fallback_code, fallback_detail or "", selection
-            )
-            warn_external(message, BackendFallbackWarning)
-        else:
-            fallback_reason = provider_diagnostics.fallback_reason
-        self._diagnostics = BackendDiagnostics(
-            requested_mode=self.mode,
-            implementation=provider_diagnostics.implementation,
-            executable=provider_diagnostics.executable,
-            library_path=provider_diagnostics.library_path,
-            data_path=provider_diagnostics.data_path,
-            discovery_source=provider_diagnostics.discovery_source,
-            version=provider_diagnostics.version,
-            exact_clause_api=provider_diagnostics.exact_clause_api,
-            fallback_reason=fallback_reason,
-            parity=provider_diagnostics.parity,
-            warnings=(fallback_reason,)
-            if fallback_reason
-            else provider_diagnostics.warnings,
-            native_candidates=native_candidates,
-        )
-
-    def _make_cli(self) -> EspeakCliBackend:
-        return EspeakCliBackend(
+        executable, library, data = _runtime_paths(
             executable=self.executable,
-            data_path=self.data,
-            vowel_clusters=self.vowel_clusters
-            if self.merge_vowel_clusters
-            else frozenset(),
-            timeout=self.timeout,
+            library=self.library,
+            data=self.data,
         )
+        try:
+            self._runtime = EspeakRuntime(
+                mode=self.mode,
+                executable=executable,
+                library=library,
+                data=data,
+                timeout=self.timeout,
+                prefer_exact_clauses=(self.mode != "cli"),
+            )
+        except (EspeakUnavailableError, EspeakConflictError) as exc:
+            _raise_backend_unavailable(exc)
 
-    @staticmethod
-    def _native_error(probes: tuple[EspeakLibraryProbe, ...]) -> str:
-        if not probes or not any(probe.loadable for probe in probes):
-            return "no usable eSpeak native library could be loaded"
-        return (
-            "no exact Piper-compatible eSpeak native library is available; "
-            "the required symbol espeak_TextToPhonemesWithTerminator was not found"
+        info = self._runtime.info
+        if self.mode == "native" and (
+            info.implementation != "native" or not info.exact_clause_api
+        ):
+            self._runtime.close()
+            raise BackendUnavailableError(
+                "native eSpeak runtime lacks Piper's exact clause capability"
+            )
+        native_candidates: tuple[object, ...] = ()
+        if self.mode != "cli":
+            inspection = inspect_espeak(
+                executable=executable,
+                library=library,
+                data=data,
+                require_exact_clauses=True,
+            )
+            native_candidates = inspection.candidates
+        fallback_reason = info.fallback_reason
+        warnings: tuple[str, ...] = ()
+        if self.mode == "auto" and info.implementation == "cli" and fallback_reason:
+            message = _piper_fallback_message(info)
+            warn_external(message, BackendFallbackWarning)
+            warnings = (message,)
+        self._diagnostics = _diagnostics_from_runtime(
+            info,
+            native_candidates=native_candidates,
+            warnings=warnings,
         )
-
-    @staticmethod
-    def _native_failure_reason(
-        probes: tuple[EspeakLibraryProbe, ...], explicit: bool
-    ) -> tuple[str, str]:
-        if not probes:
-            return (
-                "native-library-unavailable",
-                "no discovered native library was found",
-            )
-        if not any(probe.loadable for probe in probes):
-            detail = next(
-                (probe.error for probe in probes if probe.error),
-                "no discovered native library could be loaded",
-            )
-            return "native-library-load-error", detail
-        if explicit:
-            probe = probes[0]
-            return (
-                "terminator-api-unavailable",
-                f"{probe.library} does not export espeak_TextToPhonemesWithTerminator",
-            )
-        return (
-            "terminator-api-unavailable",
-            "no discovered native library exports espeak_TextToPhonemesWithTerminator",
-        )
-
-    @staticmethod
-    def _fallback_warning(
-        code: str,
-        detail: str,
-        selection: EspeakNativeSelection | None,
-    ) -> str:
-        if code == "terminator-api-unavailable":
-            if selection is not None and selection.explicit:
-                prefix = (
-                    "configured eSpeak library does not provide the exact "
-                    "Piper clause API; using CLI best-effort fallback: "
-                )
-            else:
-                prefix = (
-                    "exact Piper eSpeak clause API unavailable; using CLI "
-                    "best-effort fallback: "
-                )
-        else:
-            prefix = (
-                "native eSpeak library unavailable; using CLI best-effort fallback: "
-            )
-        return prefix + detail
 
     @property
     def diagnostics(self) -> BackendDiagnostics:
         return self._diagnostics
 
     def phonemize(self, text: str, *, voice: str) -> list[list[str]]:
-        if isinstance(self._provider, NativeEspeakProvider):
-            clusters = self.vowel_clusters if self.merge_vowel_clusters else frozenset()
-            return compose_clauses(self._provider.clauses(text, voice), clusters)
-        return self._provider.phonemize(text, voice=voice)
+        if not text:
+            return []
+        clusters = self.vowel_clusters if self.merge_vowel_clusters else frozenset()
+        info = self._runtime.info
+        try:
+            if info.implementation == "native" and info.exact_clause_api:
+                clauses = [
+                    from_runtime_clause(value)
+                    for value in self._runtime.clauses(text, voice=voice, exact=True)
+                ]
+            else:
+                if self.mode == "native":
+                    raise BackendUnavailableError(
+                        "native eSpeak runtime lacks Piper's exact clause capability"
+                    )
+                clauses = [
+                    Clause(
+                        phonemes=self._runtime.phonemize(body, voice=voice),
+                        terminator=terminator,
+                        sentence_end=sentence_end,
+                    )
+                    for body, terminator, sentence_end in split_cli_clauses(text)
+                ]
+        except BackendUnavailableError:
+            raise
+        except (VoiceNotFoundError, RuntimePhonemizationError) as exc:
+            _raise_phonemization_error(exc)
+        except CapabilityError as exc:
+            _raise_backend_unavailable(exc)
+        except EspeakConflictError as exc:
+            _raise_backend_unavailable(exc)
+        return compose_clauses(clauses, clusters)
 
     def close(self) -> None:
-        self._provider.close()
+        self._runtime.close()
 
     def __enter__(self) -> EspeakBackend:
         return self

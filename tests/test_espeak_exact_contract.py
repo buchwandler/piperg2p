@@ -1,86 +1,153 @@
 from __future__ import annotations
 
-import sys
 import types
+from typing import ClassVar
 
 import pytest
+from espeakng_runtime import Clause as RuntimeClause
+from espeakng_runtime.errors import (
+    CapabilityError,
+    EspeakConflictError,
+    EspeakUnavailableError,
+    VoiceNotFoundError,
+)
+from espeakng_runtime.errors import PhonemizationError as RuntimePhonemizationError
 
-from piperg2p import BackendFallbackWarning, EspeakBackend
+from piperg2p import (
+    BackendUnavailableError,
+    EspeakBackend,
+    PhonemizationError,
+)
 from piperg2p.backends.espeak import backend as backend_module
-from piperg2p.backends.espeak.discovery import discover
-from piperg2p.backends.espeak.native import AUDIO_OUTPUT_SYNCHRONOUS
 
 
-def test_public_synchronous_output_constant_matches_espeak_api():
-    assert AUDIO_OUTPUT_SYNCHRONOUS == 2
-
-
-def test_discovery_prefers_packaged_loader(monkeypatch, tmp_path):
-    library = tmp_path / "libespeak-ng.so"
-    data = tmp_path / "espeak-ng-data"
-    library.write_bytes(b"")
-    data.mkdir()
-    loader = types.SimpleNamespace(
-        get_library_path=lambda: str(library),
-        get_data_path=lambda: str(data),
-    )
-    monkeypatch.setitem(sys.modules, "espeakng_loader", loader)
-    monkeypatch.setattr(
-        "piperg2p.backends.espeak.discovery.find_executable",
-        lambda explicit=None: "espeak-ng",
+def _info(*, mode: str = "native", exact: bool = True):
+    return types.SimpleNamespace(
+        requested_mode=mode,
+        implementation="native" if mode != "cli" else "cli",
+        executable="espeak-ng",
+        library="libespeak-ng.so" if mode != "cli" else None,
+        data="data",
+        source="system-espeak-ng",
+        version="1.0",
+        exact_clause_api=exact,
+        fallback_reason=None,
+        fallback_code=None,
+        parity="exact" if exact else "best-effort",
     )
 
-    paths = discover()
 
-    assert paths.library == str(library)
-    assert paths.data == str(data)
-    assert paths.source == "modern-loader"
+class Runtime:
+    info_value = _info()
+    error: Exception | None = None
+    clauses_value: ClassVar[list[RuntimeClause]] = [
+        RuntimeClause(
+            phonemes="a",
+            terminator=",",
+            terminator_code=0x41014,
+            sentence_end=False,
+        ),
+        RuntimeClause(
+            phonemes="e",
+            terminator=".",
+            terminator_code=0x80028,
+            sentence_end=True,
+        ),
+    ]
+
+    def __init__(self, **kwargs: object) -> None:
+        if self.error:
+            raise self.error
+        self.kwargs = kwargs
+        self.info = self.info_value
+        self.calls: list[tuple[str, object]] = []
+
+    def clauses(self, text: str, *, voice: str, exact: bool = False):
+        self.calls.append(("clauses", (text, voice, exact)))
+        return self.clauses_value
+
+    def phonemize(self, text: str, *, voice: str) -> str:
+        self.calls.append(("phonemize", (text, voice)))
+        return text
+
+    def close(self) -> None:
+        pass
 
 
-def test_auto_rejects_native_provider_without_exact_clause_api(monkeypatch):
-    calls: list[bool] = []
-
-    class Native:
-        def __init__(self, **kwargs):
-            calls.append(kwargs["strict"])
-            raise backend_module.BackendUnavailableError(
-                "loaded eSpeak library lacks espeak_TextToPhonemesWithTerminator"
-            )
-
-    class Cli:
-        diagnostics = types.SimpleNamespace(
-            implementation="cli",
-            executable="espeak-ng",
-            library_path=None,
-            data_path=None,
-            discovery_source="system-espeak-ng",
-            version=None,
-            exact_clause_api=False,
-            fallback_reason=None,
-            parity="best-effort",
-            warnings=(),
-        )
-
-        def __init__(self, **kwargs):
-            del kwargs
-
-        def close(self):
-            pass
-
-    monkeypatch.setattr(backend_module, "NativeEspeakProvider", Native)
-    monkeypatch.setattr(backend_module, "EspeakCliBackend", Cli)
+@pytest.fixture(autouse=True)
+def patch_runtime(monkeypatch: pytest.MonkeyPatch):
+    Runtime.error = None
+    Runtime.info_value = _info()
+    monkeypatch.setattr(backend_module, "EspeakRuntime", Runtime)
     monkeypatch.setattr(
         backend_module,
-        "discover",
-        lambda **kwargs: types.SimpleNamespace(
-            library="old", data=None, executable="espeak-ng", source="system-espeak"
-        ),
+        "inspect_espeak",
+        lambda **kwargs: types.SimpleNamespace(candidates=()),
     )
 
-    with pytest.warns(BackendFallbackWarning, match="terminator API unavailable"):
-        backend = EspeakBackend(mode="auto")
 
-    assert calls == [True]
-    assert backend.diagnostics.implementation == "cli"
-    assert backend.diagnostics.fallback_reason == "terminator API unavailable"
+def test_native_exact_conversion_uses_runtime_clause_codes_only_at_runtime_boundary():
+    backend = EspeakBackend(mode="native")
+
+    assert backend.phonemize("ignored", voice="en-us") == [["a", ",", " ", "e", "."]]
+    assert backend._runtime.calls == [("clauses", ("ignored", "en-us", True))]
+    backend.close()
+
+
+def test_cli_policy_uses_local_splitter_and_not_runtime_clauses():
+    Runtime.info_value = _info(mode="cli", exact=False)
+    backend = EspeakBackend(mode="cli")
+
+    assert backend.phonemize("Hello... World?!", voice="en-us") == [
+        ["H", "e", "l", "l", "o", "."],
+        ["."],
+        ["."],
+        [" ", "W", "o", "r", "l", "d", "?"],
+        ["!"],
+    ]
+    assert all(call[0] == "phonemize" for call in backend._runtime.calls)
+    backend.close()
+
+
+def test_native_runtime_failure_maps_to_backend_unavailable():
+    Runtime.error = EspeakUnavailableError("missing native")
+    with pytest.raises(BackendUnavailableError, match="missing native"):
+        EspeakBackend(mode="native")
+
+
+@pytest.mark.parametrize(
+    "error, expected",
+    [
+        (RuntimePhonemizationError("phoneme failure"), PhonemizationError),
+        (VoiceNotFoundError("voice failure"), PhonemizationError),
+    ],
+)
+def test_runtime_phonemization_errors_map_to_piper_errors(error, expected):
+    Runtime.info_value = _info(mode="cli", exact=False)
+    backend = EspeakBackend(mode="cli")
+
+    def fail(*args: object, **kwargs: object):
+        raise error
+
+    backend._runtime.phonemize = fail
+    with pytest.raises(expected, match="failure"):
+        backend.phonemize("hello", voice="en-us")
+    backend.close()
+
+
+def test_runtime_capability_and_conflict_errors_map_to_backend_unavailable():
+    Runtime.info_value = _info(mode="cli", exact=False)
+    backend = EspeakBackend(mode="cli")
+    for error in (CapabilityError("capability"), EspeakConflictError("conflict")):
+        backend._runtime.phonemize = lambda *args, error=error, **kwargs: (
+            _ for _ in ()
+        ).throw(error)
+        with pytest.raises(BackendUnavailableError, match="capability|conflict"):
+            backend.phonemize("hello", voice="en-us")
+    backend.close()
+
+
+def test_empty_text_is_preserved():
+    backend = EspeakBackend(mode="cli")
+    assert backend.phonemize("", voice="en-us") == []
     backend.close()

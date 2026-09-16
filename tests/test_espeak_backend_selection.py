@@ -2,173 +2,224 @@ from __future__ import annotations
 
 import types
 import warnings
+from typing import ClassVar
 
 import pytest
 
-from piperg2p import BackendFallbackWarning, EspeakBackend
+from piperg2p import BackendFallbackWarning, BackendUnavailableError, EspeakBackend
 from piperg2p.backends.espeak import backend as backend_module
 
 
-def _patch_providers(monkeypatch, *, native_error: Exception | None = None):
-    calls = {"native": 0, "cli": 0}
+def _info(*, mode: str, implementation: str, fallback_reason: str | None = None):
+    return types.SimpleNamespace(
+        requested_mode=mode,
+        implementation=implementation,
+        executable="espeak-ng",
+        library="libespeak-ng.so" if implementation == "native" else None,
+        data="espeak-ng-data",
+        source="espeakng-loader" if implementation == "native" else "cli",
+        version="1.0",
+        exact_clause_api=implementation == "native",
+        fallback_reason=fallback_reason,
+        fallback_code="exact-clause-api-unavailable" if fallback_reason else None,
+        parity="exact" if implementation == "native" else "best-effort",
+    )
 
-    class Native:
-        def __init__(self, **kwargs):
-            calls["native"] += 1
-            if native_error is not None:
-                raise native_error
-            self.diagnostics = types.SimpleNamespace(
-                implementation="native",
-                executable="espeak-ng",
-                library_path="libespeak-ng.so",
-                data_path="espeak-ng-data",
-                discovery_source="test",
-                version="test",
-                exact_clause_api=True,
-                fallback_reason=None,
-                parity="exact",
-                warnings=(),
-            )
 
-        def close(self):
-            pass
+class FakeRuntime:
+    instances: ClassVar[list[FakeRuntime]] = []
+    info_value = _info(mode="auto", implementation="native")
+    error: Exception | None = None
 
-    class Cli:
-        def __init__(self, **kwargs):
-            calls["cli"] += 1
-            self.diagnostics = types.SimpleNamespace(
-                implementation="cli",
-                executable="espeak-ng",
-                library_path=None,
-                data_path=None,
-                discovery_source="test",
-                version=None,
-                exact_clause_api=False,
-                fallback_reason=None,
-                parity="best-effort",
-                warnings=(),
-            )
+    def __init__(self, **kwargs: object) -> None:
+        if self.error:
+            raise self.error
+        self.kwargs = kwargs
+        self.info = self.info_value
+        self.clause_calls: list[tuple[str, str, bool]] = []
+        self.phoneme_calls: list[tuple[str, str]] = []
+        self.closed = False
+        self.instances.append(self)
 
-        def close(self):
-            pass
+    def clauses(self, text: str, *, voice: str, exact: bool = False):
+        self.clause_calls.append((text, voice, exact))
+        return []
 
-    monkeypatch.setattr(backend_module, "NativeEspeakProvider", Native)
-    monkeypatch.setattr(backend_module, "EspeakCliBackend", Cli)
+    def phonemize(self, text: str, *, voice: str) -> str:
+        self.phoneme_calls.append((text, voice))
+        return text
+
+    def close(self) -> None:
+        self.closed = True
+
+
+@pytest.fixture(autouse=True)
+def reset_fake_runtime(monkeypatch: pytest.MonkeyPatch):
+    FakeRuntime.instances = []
+    FakeRuntime.error = None
+    monkeypatch.setattr(backend_module, "EspeakRuntime", FakeRuntime)
     monkeypatch.setattr(
         backend_module,
-        "discover",
-        lambda **kwargs: types.SimpleNamespace(
-            library="libespeak-ng.so",
-            data="espeak-ng-data",
-            executable="espeak-ng",
-            source="test",
-        ),
-    )
-    return calls
-
-
-def test_auto_keeps_successful_native_provider(monkeypatch):
-    calls = _patch_providers(monkeypatch)
-
-    backend = EspeakBackend(mode="auto")
-
-    assert calls == {"native": 1, "cli": 0}
-    assert backend.diagnostics.implementation == "native"
-    backend.close()
-
-
-def test_auto_falls_back_to_cli_after_native_failure(monkeypatch):
-    calls = _patch_providers(
-        monkeypatch,
-        native_error=backend_module.BackendUnavailableError("library unavailable"),
+        "inspect_espeak",
+        lambda **kwargs: types.SimpleNamespace(candidates=()),
     )
 
-    with pytest.warns(BackendFallbackWarning, match="library unavailable"):
-        backend = EspeakBackend(mode="auto")
 
-    assert calls == {"native": 1, "cli": 1}
-    assert backend.diagnostics.implementation == "cli"
-    assert (
-        backend.diagnostics.fallback_reason
-        == "BackendUnavailableError: library unavailable"
-    )
-    backend.close()
-
-
-def test_native_mode_keeps_successful_native_provider(monkeypatch):
-    calls = _patch_providers(monkeypatch)
-
-    backend = EspeakBackend(mode="native")
-
-    assert calls == {"native": 1, "cli": 0}
-    assert backend.diagnostics.implementation == "native"
-    backend.close()
-
-
-def test_native_mode_raises_after_native_failure(monkeypatch):
-    calls = _patch_providers(
-        monkeypatch,
-        native_error=backend_module.BackendUnavailableError("library unavailable"),
-    )
-
-    with pytest.raises(
-        backend_module.BackendUnavailableError, match="library unavailable"
-    ):
-        EspeakBackend(mode="native")
-
-    assert calls == {"native": 1, "cli": 0}
-
-
-def test_cli_mode_never_attempts_native(monkeypatch):
-    calls = _patch_providers(monkeypatch)
-
-    backend = EspeakBackend(mode="cli")
-
-    assert calls == {"native": 0, "cli": 1}
-    assert backend.diagnostics.implementation == "cli"
-    backend.close()
-
-
-def test_warning_origin_is_external(monkeypatch):
-    from piperg2p.backends.espeak.discovery import (
-        EspeakLibraryProbe,
-        EspeakNativeSelection,
-    )
-
-    probe = EspeakLibraryProbe("old", "system-espeak", None, True, False)
-    monkeypatch.setattr(
-        backend_module,
-        "select_exact_native",
-        lambda **kwargs: EspeakNativeSelection(None, (probe,), False),
-    )
-
-    class Cli:
-        diagnostics = types.SimpleNamespace(
-            implementation="cli",
-            executable="espeak-ng",
-            library_path=None,
-            data_path=None,
-            discovery_source="test",
-            version=None,
-            exact_clause_api=False,
-            fallback_reason=None,
-            parity="best-effort",
-            warnings=(),
-        )
-
-        def __init__(self, **kwargs):
-            del kwargs
-
-        def close(self):
-            pass
-
-    monkeypatch.setattr(backend_module, "EspeakCliBackend", Cli)
+def test_auto_uses_runtime_native_without_warning():
+    FakeRuntime.info_value = _info(mode="auto", implementation="native")
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         backend = EspeakBackend(mode="auto")
 
+    assert not [
+        item for item in caught if issubclass(item.category, BackendFallbackWarning)
+    ]
+    assert FakeRuntime.instances[0].kwargs["prefer_exact_clauses"] is True
+    assert backend.diagnostics.implementation == "native"
+    assert backend.diagnostics.discovery_source == "modern-loader"
+    backend.close()
+
+
+def test_auto_uses_runtime_cli_and_emits_one_fallback_warning():
+    FakeRuntime.info_value = _info(
+        mode="auto",
+        implementation="cli",
+        fallback_reason="no exact clause API",
+    )
+
+    with pytest.warns(
+        BackendFallbackWarning, match="exact Piper eSpeak clause API"
+    ) as caught:
+        backend = EspeakBackend(mode="auto")
+
     assert len(caught) == 1
-    assert caught[0].filename != "<string>"
-    assert "/piperg2p/backends/" not in caught[0].filename.replace("\\", "/")
+    assert backend.diagnostics.implementation == "cli"
+    assert backend.diagnostics.fallback_reason == "no exact clause API"
+    assert backend.diagnostics.warnings[0].startswith("exact Piper")
+    backend.close()
+
+
+def test_native_runtime_failure_maps_to_backend_unavailable():
+    FakeRuntime.error = backend_module.EspeakUnavailableError("library unavailable")
+
+    with pytest.raises(BackendUnavailableError, match="library unavailable"):
+        EspeakBackend(mode="native")
+
+
+def test_cli_uses_runtime_cli_without_native_inspection_or_warning(monkeypatch):
+    FakeRuntime.info_value = _info(mode="cli", implementation="cli")
+    inspect_calls: list[object] = []
+    monkeypatch.setattr(
+        backend_module, "inspect_espeak", lambda **kwargs: inspect_calls.append(kwargs)
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        backend = EspeakBackend(mode="cli")
+
+    assert not inspect_calls
+    assert not [
+        item for item in caught if issubclass(item.category, BackendFallbackWarning)
+    ]
+    assert FakeRuntime.instances[0].kwargs["prefer_exact_clauses"] is False
+    backend.close()
+
+
+def test_warning_origin_is_external():
+    FakeRuntime.info_value = _info(
+        mode="auto",
+        implementation="cli",
+        fallback_reason="native unavailable",
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        backend = EspeakBackend(mode="auto")
+
+    fallback = next(
+        item for item in caught if issubclass(item.category, BackendFallbackWarning)
+    )
+    assert "/piperg2p/backends/" not in str(fallback.filename).replace("\\", "/")
+    backend.close()
+
+
+def test_constructor_paths_override_legacy_and_runtime_environment(monkeypatch):
+    FakeRuntime.info_value = _info(mode="cli", implementation="cli")
+    monkeypatch.setenv("PIPERG2P_ESPEAK_EXECUTABLE", "piper-exe")
+    monkeypatch.setenv("PIPERG2P_ESPEAK_LIBRARY", "piper-lib")
+    monkeypatch.setenv("PIPERG2P_ESPEAK_DATA", "piper-data")
+    monkeypatch.setenv("ESPEAKNG_RUNTIME_EXECUTABLE", "runtime-exe")
+    monkeypatch.setenv("ESPEAKNG_RUNTIME_LIBRARY", "runtime-lib")
+    monkeypatch.setenv("ESPEAKNG_RUNTIME_DATA", "runtime-data")
+
+    backend = EspeakBackend(
+        mode="cli",
+        executable="constructor-exe",
+        library="constructor-lib",
+        data="constructor-data",
+    )
+
+    assert FakeRuntime.instances[0].kwargs["executable"] == "constructor-exe"
+    assert FakeRuntime.instances[0].kwargs["library"] == "constructor-lib"
+    assert FakeRuntime.instances[0].kwargs["data"] == "constructor-data"
+    backend.close()
+
+
+def test_legacy_environment_overrides_runtime_environment(monkeypatch):
+    FakeRuntime.info_value = _info(mode="cli", implementation="cli")
+    monkeypatch.setenv("PIPERG2P_ESPEAK_EXECUTABLE", "piper-exe")
+    monkeypatch.setenv("PIPERG2P_ESPEAK_DATA", "piper-data")
+    monkeypatch.setenv("ESPEAKNG_RUNTIME_EXECUTABLE", "runtime-exe")
+    monkeypatch.setenv("ESPEAKNG_RUNTIME_DATA", "runtime-data")
+
+    backend = EspeakBackend(mode="cli")
+
+    assert FakeRuntime.instances[0].kwargs["executable"] == "piper-exe"
+    assert FakeRuntime.instances[0].kwargs["data"] == "piper-data"
+    backend.close()
+
+
+def test_diagnostics_map_runtime_info_and_native_candidates(monkeypatch):
+    FakeRuntime.info_value = types.SimpleNamespace(
+        requested_mode="auto",
+        implementation="native",
+        executable="exe",
+        library="lib",
+        data="data",
+        source="espeakng-loader",
+        version="version",
+        exact_clause_api=True,
+        fallback_reason=None,
+        fallback_code=None,
+        parity="exact",
+    )
+    probe = types.SimpleNamespace(
+        library="candidate",
+        source="espeakng-loader",
+        data="candidate-data",
+        loadable=True,
+        exact_clause_api=True,
+        error=None,
+    )
+    monkeypatch.setattr(
+        backend_module,
+        "inspect_espeak",
+        lambda **kwargs: types.SimpleNamespace(candidates=(probe,)),
+    )
+
+    backend = EspeakBackend(mode="auto")
+    diagnostics = backend.diagnostics
+
+    assert diagnostics.requested_mode == "auto"
+    assert diagnostics.implementation == "native"
+    assert diagnostics.executable == "exe"
+    assert diagnostics.library_path == "lib"
+    assert diagnostics.data_path == "data"
+    assert diagnostics.discovery_source == "modern-loader"
+    assert diagnostics.version == "version"
+    assert diagnostics.exact_clause_api
+    assert diagnostics.fallback_reason is None
+    assert diagnostics.parity == "exact"
+    assert diagnostics.native_candidates[0].source == "modern-loader"
     backend.close()
