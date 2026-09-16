@@ -4,6 +4,10 @@ import re
 import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from espeakng_runtime import Clause as RuntimeClause
 
 _LANG_SWITCH_RE = re.compile(r"\([^)]+\)")
 
@@ -13,9 +17,6 @@ class Clause:
     phonemes: str
     terminator: str | None = None
     sentence_end: bool = False
-
-
-from espeakng_runtime import Clause as RuntimeClause
 
 
 def from_runtime_clause(value: RuntimeClause) -> Clause:

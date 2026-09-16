@@ -12,16 +12,7 @@ from .api import (
     phonemize_prepared,
     tokenize,
 )
-from .backends import (
-    EspeakBackend,
-    EspeakCliBackend,
-    EspeakLibraryCandidate,
-    EspeakLibraryProbe,
-    NativeEspeakProvider,
-    PhonemeBackend,
-    TextBackend,
-    inspect_espeak,
-)
+from .backends import PhonemeBackend, TextBackend
 from .cache import cache_info, clear_cache
 from .codec import (
     BOS,
@@ -80,6 +71,28 @@ from .types import (
     TokenAnnotationLike,
     TokenSpan,
 )
+
+_LAZY_BACKEND_EXPORTS = frozenset(
+    {
+        "EspeakBackend",
+        "EspeakCliBackend",
+        "EspeakLibraryCandidate",
+        "EspeakLibraryProbe",
+        "NativeEspeakProvider",
+        "inspect_espeak",
+    }
+)
+
+
+def __getattr__(name: str) -> object:
+    if name in _LAZY_BACKEND_EXPORTS:
+        from . import backends
+
+        value = getattr(backends, name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 try:
     __version__ = _distribution_version("piperg2p")

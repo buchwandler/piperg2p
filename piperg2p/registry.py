@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from .backends import EspeakBackend, PhonemeBackend, TextBackend
+from .backends import PhonemeBackend, TextBackend
 from .codec import EncoderStrategy, OrdinaryEncoder, PinyinEncoder
 from .config import PhonemeType, VoiceConfig
 from .errors import UnsupportedPhonemeTypeError
@@ -23,7 +23,9 @@ def _text_backend(config: VoiceConfig) -> TextBackend:
     return TextBackend()
 
 
-def _espeak_backend(config: VoiceConfig) -> EspeakBackend:
+def _espeak_backend(config: VoiceConfig) -> PhonemeBackend:
+    from .backends.espeak import EspeakBackend
+
     return EspeakBackend(vowel_clusters=config.vowel_clusters)
 
 

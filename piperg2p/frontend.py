@@ -4,7 +4,7 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any, Literal
 
-from .backends import EspeakBackend, PhonemeBackend
+from .backends import PhonemeBackend
 from .codec import EncodeResult, MissingPhonemePolicy
 from .config import PhonemeType, VoiceConfig
 from .diagnostics import FrontendDiagnostics
@@ -82,6 +82,8 @@ class PiperFrontend:
 
     def _make_backend(self) -> PhonemeBackend:
         if self.config.phoneme_type is PhonemeType.ESPEAK:
+            from .backends.espeak import EspeakBackend
+
             return EspeakBackend(
                 mode=self.espeak_mode,
                 vowel_clusters=self.config.vowel_clusters,
