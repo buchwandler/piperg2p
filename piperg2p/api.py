@@ -7,12 +7,11 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Literal
 
-from .backends import EspeakBackend
 from .cache import cache_key, get_or_create
 from .codec import MissingPhonemePolicy
-from .config import PhonemeType, VoiceConfig
+from .config import VoiceConfig
 from .errors import UnsupportedCompatibilityError
-from .frontend import PiperFrontend
+from .frontend import EspeakMode, PiperFrontend
 from .types import (
     LanguageRoutingConfig,
     OverrideSpanLike,
@@ -100,6 +99,7 @@ class PiperG2P:
         lexicons: str | Sequence[str] | None = None,
         use_espeak_fallback: bool = True,
         use_cli: bool = False,
+        espeak_mode: EspeakMode | None = None,
         strict: bool = True,
         missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN,
         lexicon_store: Any = None,
@@ -117,16 +117,17 @@ class PiperG2P:
             spacy_model_size=spacy_model_size,
             use_goruut_fallback=use_goruut_fallback,
         )
+        if espeak_mode not in {None, "auto", "native", "cli"}:
+            raise ValueError("eSpeak mode must be 'auto', 'native', or 'cli'")
+        if use_cli and espeak_mode not in {None, "cli"}:
+            raise ValueError("use_cli and espeak_mode are incompatible")
+        resolved_mode: EspeakMode = "cli" if use_cli else (espeak_mode or "auto")
         self.language = language
         self.config = _config(config, strict=strict)
         self.use_espeak_fallback = use_espeak_fallback
         self._frontend = PiperFrontend(
             self.config,
-            backend=(
-                EspeakBackend(mode="cli", vowel_clusters=self.config.vowel_clusters)
-                if use_cli and self.config.phoneme_type is PhonemeType.ESPEAK
-                else None
-            ),
+            espeak_mode=resolved_mode,
             missing=missing,
             lexicons=tuple([lexicons] if isinstance(lexicons, str) else lexicons or ()),
             lexicon_store=lexicon_store,
@@ -202,6 +203,7 @@ def get_g2p(
     lexicons: str | Sequence[str] | None = None,
     use_espeak_fallback: bool = True,
     use_cli: bool = False,
+    espeak_mode: EspeakMode | None = None,
     strict: bool = True,
     missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN,
     lexicon_store: Any = None,
@@ -213,10 +215,16 @@ def get_g2p(
 ) -> PiperG2P:
     normalized_config = _config(config, strict=strict)
     lexicon_names = tuple([lexicons] if isinstance(lexicons, str) else lexicons or ())
+    if espeak_mode not in {None, "auto", "native", "cli"}:
+        raise ValueError("eSpeak mode must be 'auto', 'native', or 'cli'")
+    if use_cli and espeak_mode not in {None, "cli"}:
+        raise ValueError("use_cli and espeak_mode are incompatible")
+    resolved_mode: EspeakMode = "cli" if use_cli else (espeak_mode or "auto")
     kwargs = {
         "lexicons": lexicon_names,
         "use_espeak_fallback": use_espeak_fallback,
         "use_cli": use_cli,
+        "espeak_mode": resolved_mode,
         "strict": strict,
         "missing": missing,
         "lexicon_store": lexicon_store,
@@ -232,6 +240,7 @@ def get_g2p(
         normalized_config,
         language,
         use_cli=use_cli,
+        espeak_mode=resolved_mode,
         missing=MissingPhonemePolicy(missing).value,
         lexicons=lexicon_names,
         strict=strict,
@@ -268,6 +277,7 @@ def phonemize_prepared(
     lexicons: str | Sequence[str] | None = None,
     use_espeak_fallback: bool = True,
     use_cli: bool = False,
+    espeak_mode: EspeakMode | None = None,
     strict: bool = True,
     strict_stress: bool = False,
     g2p: PiperG2P | None = None,
@@ -282,6 +292,7 @@ def phonemize_prepared(
         lexicons=lexicons,
         use_espeak_fallback=use_espeak_fallback,
         use_cli=use_cli,
+        espeak_mode=espeak_mode,
         strict=strict,
         missing=missing,
     )

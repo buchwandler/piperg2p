@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from .backends import EspeakBackend, PhonemeBackend
 from .codec import EncodeResult, MissingPhonemePolicy
@@ -19,6 +19,8 @@ from .raw_blocks import compose_raw_segments, parse_raw_blocks
 from .registry import spec_for
 from .types import PhonemeSentence, PhonemizeResult
 
+EspeakMode = Literal["auto", "native", "cli"]
+
 
 def _is_arabic_voice(voice: str) -> bool:
     normalized = voice.casefold().replace("_", "-")
@@ -33,12 +35,18 @@ class PiperFrontend:
         config: VoiceConfig,
         *,
         backend: PhonemeBackend | None = None,
+        espeak_mode: EspeakMode = "auto",
         missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN,
         lexicons: Sequence[str] = (),
         lexicon_store: Any = None,
         lexicon_backend: PronunciationLookup | None = None,
         use_espeak_fallback: bool = True,
     ) -> None:
+        if espeak_mode not in {"auto", "native", "cli"}:
+            raise ValueError("eSpeak mode must be 'auto', 'native', or 'cli'")
+        if backend is not None and espeak_mode != "auto":
+            raise ValueError("backend and espeak_mode are mutually exclusive")
+        self.espeak_mode = espeak_mode
         self.use_espeak_fallback = use_espeak_fallback
         self.config = config
         self.missing = MissingPhonemePolicy(missing)
@@ -73,12 +81,13 @@ class PiperFrontend:
         return bool(self._lexicon_identifiers or self._lexicon_backend is not None)
 
     def _make_backend(self) -> PhonemeBackend:
-        if self.config.phoneme_type in {PhonemeType.TEXT, PhonemeType.ESPEAK}:
-            if self.config.phoneme_type is PhonemeType.ESPEAK and self._lexicon_enabled:
-                return EspeakBackend(
-                    vowel_clusters=self.config.vowel_clusters,
-                    merge_vowel_clusters=False,
-                )
+        if self.config.phoneme_type is PhonemeType.ESPEAK:
+            return EspeakBackend(
+                mode=self.espeak_mode,
+                vowel_clusters=self.config.vowel_clusters,
+                merge_vowel_clusters=not self._lexicon_enabled,
+            )
+        if self.config.phoneme_type is PhonemeType.TEXT:
             assert self._spec.backend_factory is not None
             return self._spec.backend_factory(self.config)
         if not self._spec.implemented or self._spec.backend_factory is None:

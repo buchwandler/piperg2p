@@ -40,6 +40,10 @@ result = phonemize_prepared(
 Spokenform is not a PiperG2P core, optional-extra, development, or core-test dependency.
 The `dev` extra provides pytest, coverage, ruff, mypy, and build tooling. eSpeak NG is a system dependency for eSpeak voices. Its executable, shared library, and data directory can be selected with constructor arguments or `PIPERG2P_ESPEAK_EXECUTABLE`, `PIPERG2P_ESPEAK_LIBRARY`, and `PIPERG2P_ESPEAK_DATA`.
 
+For exact Piper native parity, ordinary eSpeak availability is not sufficient. Auto mode probes each discovered native candidate and requires `espeak_TextToPhonemesWithTerminator` before selecting it. Native mode requires that exact symbol, while CLI mode remains available as a best-effort fallback. The optional `espeakng-loader` is one candidate in this scan, not proof of exact capability.
+
+Use `inspect_espeak()` for non-initializing troubleshooting. It reports CLI availability, the selected exact library, and immutable probe results without emitting fallback warnings. Explicit `library=` and `PIPERG2P_ESPEAK_LIBRARY` overrides remain authoritative, so an incompatible configured library is not replaced by another native candidate.
+
 No frontend downloads models or makes network requests during phonemization.
 
 Optional lexicon adapters are installed separately:

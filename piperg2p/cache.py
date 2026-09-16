@@ -32,11 +32,13 @@ def cache_key(
     lexicons: tuple[str, ...],
     strict: bool,
     use_espeak_fallback: bool,
+    espeak_mode: str = "auto",
 ) -> str:
     value = {
         "language": language.casefold().replace("_", "-"),
         "config": config_fingerprint(config),
         "use_cli": use_cli,
+        "espeak_mode": espeak_mode,
         "missing": missing,
         "lexicons": lexicons,
         "strict": strict,

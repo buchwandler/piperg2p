@@ -15,9 +15,12 @@ from .api import (
 from .backends import (
     EspeakBackend,
     EspeakCliBackend,
+    EspeakLibraryCandidate,
+    EspeakLibraryProbe,
     NativeEspeakProvider,
     PhonemeBackend,
     TextBackend,
+    inspect_espeak,
 )
 from .cache import cache_info, clear_cache
 from .codec import (
@@ -33,7 +36,7 @@ from .codec import (
     ids_to_phonemes,
 )
 from .config import PhonemeType, PiperConfig, VoiceConfig
-from .diagnostics import BackendDiagnostics, FrontendDiagnostics
+from .diagnostics import BackendDiagnostics, EspeakCapabilities, FrontendDiagnostics
 from .errors import (
     BackendError,
     BackendFallbackWarning,
@@ -54,7 +57,7 @@ from .errors import (
     UnsupportedCompatibilityError,
     UnsupportedPhonemeTypeError,
 )
-from .frontend import PiperFrontend
+from .frontend import EspeakMode, PiperFrontend
 from .language_routing import normalize_language, route_language
 from .lexicons.registry import available_lexicons, lexicon_info
 from .markers import apply_marker_overrides, parse_delimited
@@ -96,7 +99,11 @@ __all__ = [
     "EncodeResult",
     "EncoderStrategy",
     "EspeakBackend",
+    "EspeakCapabilities",
     "EspeakCliBackend",
+    "EspeakLibraryCandidate",
+    "EspeakLibraryProbe",
+    "EspeakMode",
     "FrontendDiagnostics",
     "LanguageRoute",
     "LanguageRoutingConfig",
@@ -143,6 +150,7 @@ __all__ = [
     "encode_pinyin",
     "get_g2p",
     "ids_to_phonemes",
+    "inspect_espeak",
     "lexicon_info",
     "normalize_language",
     "parse_delimited",

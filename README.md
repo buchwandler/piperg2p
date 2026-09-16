@@ -31,6 +31,8 @@ This boundary does not change eSpeak compatibility: PiperG2P passes prepared tex
 
 Install eSpeak NG separately for eSpeak voices. Text voices need no optional runtime package.
 
+For eSpeak voices, `auto` mode checks native-library capabilities and selects the first library providing Piper's exact `espeak_TextToPhonemesWithTerminator` clause API. If none is available, it uses the CLI with best-effort parity and a visible fallback diagnostic. Use `native` to require exact native support or `cli` to request the CLI directly. `inspect_espeak()` reports these capabilities without initializing eSpeak.
+
 ## Semantic preparation composition
 
 Use a separate preparation package only when written semantics need expansion:

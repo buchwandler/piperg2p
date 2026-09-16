@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import types
+import warnings
 
 import pytest
 
@@ -125,4 +126,49 @@ def test_cli_mode_never_attempts_native(monkeypatch):
 
     assert calls == {"native": 0, "cli": 1}
     assert backend.diagnostics.implementation == "cli"
+    backend.close()
+
+
+def test_warning_origin_is_external(monkeypatch):
+    from piperg2p.backends.espeak.discovery import (
+        EspeakLibraryProbe,
+        EspeakNativeSelection,
+    )
+
+    probe = EspeakLibraryProbe("old", "system-espeak", None, True, False)
+    monkeypatch.setattr(
+        backend_module,
+        "select_exact_native",
+        lambda **kwargs: EspeakNativeSelection(None, (probe,), False),
+    )
+
+    class Cli:
+        diagnostics = types.SimpleNamespace(
+            implementation="cli",
+            executable="espeak-ng",
+            library_path=None,
+            data_path=None,
+            discovery_source="test",
+            version=None,
+            exact_clause_api=False,
+            fallback_reason=None,
+            parity="best-effort",
+            warnings=(),
+        )
+
+        def __init__(self, **kwargs):
+            del kwargs
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(backend_module, "EspeakCliBackend", Cli)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        backend = EspeakBackend(mode="auto")
+
+    assert len(caught) == 1
+    assert caught[0].filename != "<string>"
+    assert "/piperg2p/backends/" not in caught[0].filename.replace("\\", "/")
     backend.close()
