@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from espeakng_runtime import Mode as EspeakMode
+EspeakMode = Literal["auto", "native", "cli"]
 
 from .backends import PhonemeBackend
 from .codec import EncodeResult, MissingPhonemePolicy
