@@ -1,0 +1,255 @@
+ piperg2p/__init__.py                 | 33 ++++++++++++------
+ piperg2p/backends/__init__.py        | 32 +++++++++++++-----
+ piperg2p/backends/espeak/__init__.py | 65 +++++++++++++++++++++++++++---------
+ piperg2p/backends/espeak/clauses.py  |  7 ++--
+ piperg2p/frontend.py                 |  4 ++-
+ piperg2p/registry.py                 |  6 ++--
+ 6 files changed, 107 insertions(+), 40 deletions(-)
+
+diff --git a/piperg2p/__init__.py b/piperg2p/__init__.py
+index 60169d4..0405dfe 100644
+--- a/piperg2p/__init__.py
++++ b/piperg2p/__init__.py
+@@ -12,16 +12,7 @@ from .api import (
+     phonemize_prepared,
+     tokenize,
+ )
+-from .backends import (
+-    EspeakBackend,
+-    EspeakCliBackend,
+-    EspeakLibraryCandidate,
+-    EspeakLibraryProbe,
+-    NativeEspeakProvider,
+-    PhonemeBackend,
+-    TextBackend,
+-    inspect_espeak,
+-)
++from .backends import PhonemeBackend, TextBackend
+ from .cache import cache_info, clear_cache
+ from .codec import (
+     BOS,
+@@ -81,6 +72,28 @@ from .types import (
+     TokenSpan,
+ )
+
++_LAZY_BACKEND_EXPORTS = frozenset(
++    {
++        "EspeakBackend",
++        "EspeakCliBackend",
++        "EspeakLibraryCandidate",
++        "EspeakLibraryProbe",
++        "NativeEspeakProvider",
++        "inspect_espeak",
++    }
++)
++
++
++def __getattr__(name: str) -> object:
++    if name in _LAZY_BACKEND_EXPORTS:
++        from . import backends
++
++        value = getattr(backends, name)
++        globals()[name] = value
++        return value
++    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
++
++
+ try:
+     __version__ = _distribution_version("piperg2p")
+ except PackageNotFoundError:
+diff --git a/piperg2p/backends/__init__.py b/piperg2p/backends/__init__.py
+index f404d7b..5697dd4 100644
+--- a/piperg2p/backends/__init__.py
++++ b/piperg2p/backends/__init__.py
+@@ -1,16 +1,20 @@
+ """Backend implementations and compatibility exports."""
+
++from typing import TYPE_CHECKING
++
+ from .base import PhonemeBackend
+-from .espeak import (
+-    EspeakBackend,
+-    EspeakCliBackend,
+-    EspeakLibraryCandidate,
+-    EspeakLibraryProbe,
+-    NativeEspeakProvider,
+-    inspect_espeak,
+-)
+ from .text import TextBackend
+
++if TYPE_CHECKING:
++    from .espeak import (
++        EspeakBackend,
++        EspeakCliBackend,
++        EspeakLibraryCandidate,
++        EspeakLibraryProbe,
++        NativeEspeakProvider,
++        inspect_espeak,
++    )
++
+ __all__ = [
+     "EspeakBackend",
+     "EspeakCliBackend",
+@@ -21,3 +25,15 @@ __all__ = [
+     "TextBackend",
+     "inspect_espeak",
+ ]
++
++_ESPEAK_EXPORTS = frozenset(__all__) - {"PhonemeBackend", "TextBackend"}
++
++
++def __getattr__(name: str) -> object:
++    if name in _ESPEAK_EXPORTS:
++        from . import espeak
++
++        value = getattr(espeak, name)
++        globals()[name] = value
++        return value
++    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+diff --git a/piperg2p/backends/espeak/__init__.py b/piperg2p/backends/espeak/__init__.py
+index 1e9dca4..d80b642 100644
+--- a/piperg2p/backends/espeak/__init__.py
++++ b/piperg2p/backends/espeak/__init__.py
+@@ -1,20 +1,24 @@
+-from .backend import EspeakBackend
++from typing import TYPE_CHECKING
++
+ from .clauses import Clause, compose_clauses, merge_vowel_clusters
+-from .cli import EspeakCliBackend
+-from .discovery import (
+-    EspeakLibraryCandidate,
+-    EspeakLibraryProbe,
+-    EspeakPaths,
+-    discover,
+-    find_data,
+-    find_executable,
+-    find_library,
+-    inspect_espeak,
+-    iter_library_candidates,
+-    probe_library_candidate,
+-    select_exact_native,
+-)
+-from .native import NativeEspeakProvider
++
++if TYPE_CHECKING:
++    from .backend import EspeakBackend
++    from .cli import EspeakCliBackend
++    from .discovery import (
++        EspeakLibraryCandidate,
++        EspeakLibraryProbe,
++        EspeakPaths,
++        discover,
++        find_data,
++        find_executable,
++        find_library,
++        inspect_espeak,
++        iter_library_candidates,
++        probe_library_candidate,
++        select_exact_native,
++    )
++    from .native import NativeEspeakProvider
+
+ __all__ = [
+     "Clause",
+@@ -35,3 +39,32 @@ __all__ = [
+     "probe_library_candidate",
+     "select_exact_native",
+ ]
++
++_LAZY_EXPORT_MODULES = {
++    "EspeakBackend": ".backend",
++    "EspeakCliBackend": ".cli",
++    "EspeakLibraryCandidate": ".discovery",
++    "EspeakLibraryProbe": ".discovery",
++    "EspeakPaths": ".discovery",
++    "NativeEspeakProvider": ".native",
++    "discover": ".discovery",
++    "find_data": ".discovery",
++    "find_executable": ".discovery",
++    "find_library": ".discovery",
++    "inspect_espeak": ".discovery",
++    "iter_library_candidates": ".discovery",
++    "probe_library_candidate": ".discovery",
++    "select_exact_native": ".discovery",
++}
++
++
++def __getattr__(name: str) -> object:
++    module_name = _LAZY_EXPORT_MODULES.get(name)
++    if module_name is None:
++        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
++
++    from importlib import import_module
++
++    value = getattr(import_module(module_name, __name__), name)
++    globals()[name] = value
++    return value
+diff --git a/piperg2p/backends/espeak/clauses.py b/piperg2p/backends/espeak/clauses.py
+index 28731b3..a9df2af 100644
+--- a/piperg2p/backends/espeak/clauses.py
++++ b/piperg2p/backends/espeak/clauses.py
+@@ -4,6 +4,10 @@ import re
+ import unicodedata
+ from collections.abc import Iterable
+ from dataclasses import dataclass
++from typing import TYPE_CHECKING
++
++if TYPE_CHECKING:
++    from espeakng_runtime import Clause as RuntimeClause
+
+ _LANG_SWITCH_RE = re.compile(r"\([^)]+\)")
+
+@@ -15,9 +19,6 @@ class Clause:
+     sentence_end: bool = False
+
+
+-from espeakng_runtime import Clause as RuntimeClause
+-
+-
+ def from_runtime_clause(value: RuntimeClause) -> Clause:
+     return Clause(
+         phonemes=value.phonemes,
+diff --git a/piperg2p/frontend.py b/piperg2p/frontend.py
+index 3d9cea1..efc6592 100644
+--- a/piperg2p/frontend.py
++++ b/piperg2p/frontend.py
+@@ -4,7 +4,7 @@ from collections.abc import Iterable, Sequence
+ from pathlib import Path
+ from typing import Any, Literal
+
+-from .backends import EspeakBackend, PhonemeBackend
++from .backends import PhonemeBackend
+ from .codec import EncodeResult, MissingPhonemePolicy
+ from .config import PhonemeType, VoiceConfig
+ from .diagnostics import FrontendDiagnostics
+@@ -82,6 +82,8 @@ class PiperFrontend:
+
+     def _make_backend(self) -> PhonemeBackend:
+         if self.config.phoneme_type is PhonemeType.ESPEAK:
++            from .backends.espeak import EspeakBackend
++
+             return EspeakBackend(
+                 mode=self.espeak_mode,
+                 vowel_clusters=self.config.vowel_clusters,
+diff --git a/piperg2p/registry.py b/piperg2p/registry.py
+index 468180c..ae6a37d 100644
+--- a/piperg2p/registry.py
++++ b/piperg2p/registry.py
+@@ -3,7 +3,7 @@ from __future__ import annotations
+ from collections.abc import Callable
+ from dataclasses import dataclass
+
+-from .backends import EspeakBackend, PhonemeBackend, TextBackend
++from .backends import PhonemeBackend, TextBackend
+ from .codec import EncoderStrategy, OrdinaryEncoder, PinyinEncoder
+ from .config import PhonemeType, VoiceConfig
+ from .errors import UnsupportedPhonemeTypeError
+@@ -23,7 +23,9 @@ def _text_backend(config: VoiceConfig) -> TextBackend:
+     return TextBackend()
+
+
+-def _espeak_backend(config: VoiceConfig) -> EspeakBackend:
++def _espeak_backend(config: VoiceConfig) -> PhonemeBackend:
++    from .backends.espeak import EspeakBackend
++
+     return EspeakBackend(vowel_clusters=config.vowel_clusters)

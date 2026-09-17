@@ -1,0 +1,58 @@
+schema: releaseledger.entry-batch.v1
+operation: create
+schema_version: 1
+object_type: release_entry_batch
+release_version: v0.1.2
+git_base_ref: 4dbbd36f971926283192e3ff571fdc382ae11780
+git_base_sha: 4dbbd36f971926283192e3ff571fdc382ae11780
+git_head_ref: 53fc9b67cb6e38ee0e19fdbc77b2f8a4176b3d6e
+git_head_sha: 53fc9b67cb6e38ee0e19fdbc77b2f8a4176b3d6e
+include_merges: nontrivial
+entries:
+  - kind: added
+    summary: Added `inspect_espeak()` diagnostics and native library auto-discovery
+    status: accepted
+    source_refs:
+      - git:dfed7526f63a77ac43df9607e4be4d37996172c9
+    paths:
+      - piperg2p/_warnings.py
+      - piperg2p/diagnostics.py
+      - piperg2p/backends/espeak/discovery.py
+    sources:
+      - git:dfed7526f63a77ac43df9607e4be4d37996172c9
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"
+  - kind: changed
+    summary: Changed eSpeak backend to delegate discovery and execution to espeakng-runtime
+    status: accepted
+    source_refs:
+      - git:d1707b60b5e5330c3419613a083dd43d2eb45d47
+    paths:
+      - piperg2p/backends/espeak/backend.py
+      - piperg2p/backends/espeak/cli.py
+      - piperg2p/backends/espeak/discovery.py
+      - piperg2p/backends/espeak/native.py
+      - pyproject.toml
+    sources:
+      - git:d1707b60b5e5330c3419613a083dd43d2eb45d47
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"
+  - kind: changed
+    summary: Changed eSpeak backend exports to lazy imports
+    status: accepted
+    source_refs:
+      - git:53fc9b67cb6e38ee0e19fdbc77b2f8a4176b3d6e
+    paths:
+      - piperg2p/__init__.py
+      - piperg2p/backends/__init__.py
+      - piperg2p/backends/espeak/__init__.py
+    sources:
+      - git:53fc9b67cb6e38ee0e19fdbc77b2f8a4176b3d6e
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"

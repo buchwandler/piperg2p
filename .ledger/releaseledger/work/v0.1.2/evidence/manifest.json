@@ -1,0 +1,86 @@
+{
+  "candidate_count": 3,
+  "candidates": [
+    {
+      "additions": 726,
+      "deletions": 108,
+      "patch_file": "dfed752.patch",
+      "patch_sha256": "9b3d699fc0617c473cc63111b57c895bf5c4a46f5139dc400fcedcd3f5edbbbd",
+      "paths": [
+        "CHANGELOG.md",
+        "README.md",
+        "docs/espeak.md",
+        "docs/installation.md",
+        "piperg2p/__init__.py",
+        "piperg2p/_warnings.py",
+        "piperg2p/api.py",
+        "piperg2p/backends/__init__.py",
+        "piperg2p/backends/espeak/__init__.py",
+        "piperg2p/backends/espeak/backend.py",
+        "piperg2p/backends/espeak/discovery.py",
+        "piperg2p/cache.py",
+        "piperg2p/diagnostics.py",
+        "piperg2p/frontend.py",
+        "tests/test_espeak_backend_selection.py",
+        "tests/test_espeak_inspection.py",
+        "tests/test_espeak_mode.py"
+      ],
+      "sha": "dfed7526f63a77ac43df9607e4be4d37996172c9",
+      "short_sha": "dfed752",
+      "source_ref": "git:dfed7526f63a77ac43df9607e4be4d37996172c9"
+    },
+    {
+      "additions": 1006,
+      "deletions": 984,
+      "patch_file": "d1707b6.patch",
+      "patch_sha256": "384f3abe283b1919052326dc8f8b1adc38dfcf2c8e19214aaf262fb71505041f",
+      "paths": [
+        "README.md",
+        "docs/api/backends.md",
+        "docs/espeak.md",
+        "docs/installation.md",
+        "docs/provenance.md",
+        "piperg2p/backends/espeak/backend.py",
+        "piperg2p/backends/espeak/clauses.py",
+        "piperg2p/backends/espeak/cli.py",
+        "piperg2p/backends/espeak/discovery.py",
+        "piperg2p/backends/espeak/manager.py",
+        "piperg2p/backends/espeak/native.py",
+        "pyproject.toml",
+        "tests/test_clause_backend.py",
+        "tests/test_dependency_contract.py",
+        "tests/test_espeak_backend_selection.py",
+        "tests/test_espeak_exact_contract.py",
+        "tests/test_espeak_inspection.py"
+      ],
+      "sha": "d1707b60b5e5330c3419613a083dd43d2eb45d47",
+      "short_sha": "d1707b6",
+      "source_ref": "git:d1707b60b5e5330c3419613a083dd43d2eb45d47"
+    },
+    {
+      "additions": 107,
+      "deletions": 40,
+      "patch_file": "53fc9b6.patch",
+      "patch_sha256": "c20e6f3332c8050651f99d13e0fea1413d85f1d5ff95cb642138cbd867e27140",
+      "paths": [
+        "piperg2p/__init__.py",
+        "piperg2p/backends/__init__.py",
+        "piperg2p/backends/espeak/__init__.py",
+        "piperg2p/backends/espeak/clauses.py",
+        "piperg2p/frontend.py",
+        "piperg2p/registry.py"
+      ],
+      "sha": "53fc9b67cb6e38ee0e19fdbc77b2f8a4176b3d6e",
+      "short_sha": "53fc9b6",
+      "source_ref": "git:53fc9b67cb6e38ee0e19fdbc77b2f8a4176b3d6e"
+    }
+  ],
+  "git_base_ref": "4dbbd36f971926283192e3ff571fdc382ae11780",
+  "git_base_sha": "4dbbd36f971926283192e3ff571fdc382ae11780",
+  "git_head_ref": "53fc9b67cb6e38ee0e19fdbc77b2f8a4176b3d6e",
+  "git_head_sha": "53fc9b67cb6e38ee0e19fdbc77b2f8a4176b3d6e",
+  "include_merges": "nontrivial",
+  "object_type": "git_evidence_manifest",
+  "release_version": "v0.1.2",
+  "schema_version": 1
+}

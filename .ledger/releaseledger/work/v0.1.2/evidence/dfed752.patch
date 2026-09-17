@@ -1,0 +1,1240 @@
+ CHANGELOG.md                           |  11 ++
+ README.md                              |   2 +
+ docs/espeak.md                         |  39 +++++-
+ docs/installation.md                   |   4 +
+ piperg2p/__init__.py                   |  12 +-
+ piperg2p/_warnings.py                  |  25 ++++
+ piperg2p/api.py                        |  27 ++--
+ piperg2p/backends/__init__.py          |  12 +-
+ piperg2p/backends/espeak/__init__.py   |  20 ++-
+ piperg2p/backends/espeak/backend.py    | 216 ++++++++++++++++++++----------
+ piperg2p/backends/espeak/discovery.py  | 233 ++++++++++++++++++++++++++++++---
+ piperg2p/cache.py                      |   2 +
+ piperg2p/diagnostics.py                |  16 +++
+ piperg2p/frontend.py                   |  23 +++-
+ tests/test_espeak_backend_selection.py |  46 +++++++
+ tests/test_espeak_inspection.py        |  99 ++++++++++++++
+ tests/test_espeak_mode.py              |  47 +++++++
+ 17 files changed, 726 insertions(+), 108 deletions(-)
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+new file mode 100644
+index 0000000..1aba3b9
+--- /dev/null
++++ b/CHANGELOG.md
+@@ -0,0 +1,11 @@
++# Changelog
++
++## Unreleased
++
++### Changed
++
++- eSpeak auto mode now probes automatically discovered native libraries and selects the first library supporting Piper's exact `espeak_TextToPhonemesWithTerminator` API before falling back to the CLI
++- Explicit native-library overrides remain authoritative
++- eSpeak diagnostics distinguish unavailable native libraries from libraries that lack the exact Piper clause API
++- Backend fallback warnings now identify the external caller instead of a dataclass-generated `<string>` frame
++- Added non-initializing `inspect_espeak()` capability diagnostics
+diff --git a/README.md b/README.md
+index 8bc49b4..d44041d 100644
+--- a/README.md
++++ b/README.md
+@@ -31,6 +31,8 @@ This boundary does not change eSpeak compatibility: PiperG2P passes prepared tex
+
+ Install eSpeak NG separately for eSpeak voices. Text voices need no optional runtime package.
+
++For eSpeak voices, `auto` mode checks native-library capabilities and selects the first library providing Piper's exact `espeak_TextToPhonemesWithTerminator` clause API. If none is available, it uses the CLI with best-effort parity and a visible fallback diagnostic. Use `native` to require exact native support or `cli` to request the CLI directly. `inspect_espeak()` reports these capabilities without initializing eSpeak.
++
+ ## Semantic preparation composition
+
+ Use a separate preparation package only when written semantics need expansion:
+diff --git a/docs/espeak.md b/docs/espeak.md
+index ecb08d3..2c8f1d8 100644
+--- a/docs/espeak.md
++++ b/docs/espeak.md
+@@ -1,14 +1,43 @@
+ # eSpeak backends
+
+-Auto mode rejects a native library without `espeak_TextToPhonemesWithTerminator` and falls back to CLI with a distinct `terminator API unavailable` diagnostic. This prevents an old native library from silently losing Piper clause boundaries.
+-`EspeakBackend` supports `auto`, `native`, and `cli` modes. Auto mode attempts the native shared library first and falls back to the CLI with a `BackendFallbackWarning`. Native mode fails clearly when the library or exact clause API is unavailable. CLI mode is explicitly `best-effort`.
++`EspeakBackend` supports `auto`, `native`, and `cli` modes. Piper's native path is labeled `exact` only when the loaded library exports `espeak_TextToPhonemesWithTerminator`. The CLI path is always labeled `best-effort`.
+
+-Native conversion uses the public eSpeak NG functions `espeak_Initialize`, `espeak_SetVoiceByName`, and `espeak_TextToPhonemesWithTerminator`. The process-wide native manager holds an `RLock` across voice selection and complete clause conversion because eSpeak has mutable global state.
++## Native capability selection
++
++Auto mode scans discovered native libraries in priority order and selects the first candidate that supports `espeak_TextToPhonemesWithTerminator`. The order is the optional `espeakng-loader`, system eSpeak NG, system eSpeak, and libraries near the configured or discovered executable. It falls back to the CLI only when no exact native candidate is available, and emits a `BackendFallbackWarning`.
++
++Native mode requires an exact-capable native library and never silently falls back. CLI mode explicitly requests best-effort behavior, never probes native libraries, and does not emit a fallback warning. Exact native mode does not require a CLI executable.
++
++`PIPERG2P_ESPEAK_LIBRARY` and the corresponding `library=` argument are authoritative. When either is configured, only that library is probed. If it is incompatible or unloadable, PiperG2P does not silently substitute another native library.
++
++## Capability inspection
++
++Use `inspect_espeak()` to inspect the same discovery path without constructing a backend, emitting warnings, or initializing eSpeak:
+
+-Discovery prefers explicit overrides, the optional modern eSpeak loader, system eSpeak NG, and legacy eSpeak. The selected source is exposed as `BackendDiagnostics.discovery_source`.
+-`BackendDiagnostics` reports the requested mode, implementation, executable, library, data path, version, exact clause support, fallback reason, and parity label. eSpeak data discovery never imports Piper.
++```python
++from piperg2p import inspect_espeak
++
++info = inspect_espeak()
++print("CLI available:", info.cli_available)
++print("exact native:", info.exact_native_available)
++print("selected:", info.selected_exact_library)
++
++for candidate in info.candidates:
++    print(
++        candidate.source,
++        candidate.library,
++        candidate.loadable,
++        candidate.exact_clause_api,
++        candidate.error,
++    )
++```
++
++Runtime `BackendDiagnostics` reports implementation, parity, exact clause support, fallback reason, selected library details, and the native candidate probes. This distinguishes a missing native library from a loadable library that lacks Piper's exact clause API.
++
++Native conversion uses the public eSpeak NG functions `espeak_Initialize`, `espeak_SetVoiceByName`, and `espeak_TextToPhonemesWithTerminator`. The process-wide native manager holds an `RLock` across voice selection and complete clause conversion because eSpeak has mutable global state.
+
+ ## IPA3 benchmark identity
+
+ For pronunciation correctness, `benchmarks/benchmark_espeak.py` invokes the external executable directly with `-q --ipa=3 -v <voice> --stdin`. The reference never calls PiperG2P's CLI backend. Select `--candidate native`, `--candidate cli`, or `--candidate auto`; native fallback is reported in diagnostics. Use `--reference-source golden` only with an explicitly captured golden file.
++
+ Clause transformations are pure Python around a clause provider. They remove language-switch markers, retain comma, colon, and semicolon punctuation with a following space, preserve sentence punctuation, apply NFD after assembly, merge configured vowel clusters longest-first, and emit residual final text.
+diff --git a/docs/installation.md b/docs/installation.md
+index 6c1e562..054371c 100644
+--- a/docs/installation.md
++++ b/docs/installation.md
+@@ -40,6 +40,10 @@ result = phonemize_prepared(
+ Spokenform is not a PiperG2P core, optional-extra, development, or core-test dependency.
+ The `dev` extra provides pytest, coverage, ruff, mypy, and build tooling. eSpeak NG is a system dependency for eSpeak voices. Its executable, shared library, and data directory can be selected with constructor arguments or `PIPERG2P_ESPEAK_EXECUTABLE`, `PIPERG2P_ESPEAK_LIBRARY`, and `PIPERG2P_ESPEAK_DATA`.
+
++For exact Piper native parity, ordinary eSpeak availability is not sufficient. Auto mode probes each discovered native candidate and requires `espeak_TextToPhonemesWithTerminator` before selecting it. Native mode requires that exact symbol, while CLI mode remains available as a best-effort fallback. The optional `espeakng-loader` is one candidate in this scan, not proof of exact capability.
++
++Use `inspect_espeak()` for non-initializing troubleshooting. It reports CLI availability, the selected exact library, and immutable probe results without emitting fallback warnings. Explicit `library=` and `PIPERG2P_ESPEAK_LIBRARY` overrides remain authoritative, so an incompatible configured library is not replaced by another native candidate.
++
+ No frontend downloads models or makes network requests during phonemization.
+
+ Optional lexicon adapters are installed separately:
+diff --git a/piperg2p/__init__.py b/piperg2p/__init__.py
+index a31b38d..60169d4 100644
+--- a/piperg2p/__init__.py
++++ b/piperg2p/__init__.py
+@@ -15,9 +15,12 @@ from .api import (
+ from .backends import (
+     EspeakBackend,
+     EspeakCliBackend,
++    EspeakLibraryCandidate,
++    EspeakLibraryProbe,
+     NativeEspeakProvider,
+     PhonemeBackend,
+     TextBackend,
++    inspect_espeak,
+ )
+ from .cache import cache_info, clear_cache
+ from .codec import (
+@@ -33,7 +36,7 @@ from .codec import (
+     ids_to_phonemes,
+ )
+ from .config import PhonemeType, PiperConfig, VoiceConfig
+-from .diagnostics import BackendDiagnostics, FrontendDiagnostics
++from .diagnostics import BackendDiagnostics, EspeakCapabilities, FrontendDiagnostics
+ from .errors import (
+     BackendError,
+     BackendFallbackWarning,
+@@ -54,7 +57,7 @@ from .errors import (
+     UnsupportedCompatibilityError,
+     UnsupportedPhonemeTypeError,
+ )
+-from .frontend import PiperFrontend
++from .frontend import EspeakMode, PiperFrontend
+ from .language_routing import normalize_language, route_language
+ from .lexicons.registry import available_lexicons, lexicon_info
+ from .markers import apply_marker_overrides, parse_delimited
+@@ -96,7 +99,11 @@ __all__ = [
+     "EncodeResult",
+     "EncoderStrategy",
+     "EspeakBackend",
++    "EspeakCapabilities",
+     "EspeakCliBackend",
++    "EspeakLibraryCandidate",
++    "EspeakLibraryProbe",
++    "EspeakMode",
+     "FrontendDiagnostics",
+     "LanguageRoute",
+     "LanguageRoutingConfig",
+@@ -143,6 +150,7 @@ __all__ = [
+     "encode_pinyin",
+     "get_g2p",
+     "ids_to_phonemes",
++    "inspect_espeak",
+     "lexicon_info",
+     "normalize_language",
+     "parse_delimited",
+diff --git a/piperg2p/_warnings.py b/piperg2p/_warnings.py
+new file mode 100644
+index 0000000..3c9d0bd
+--- /dev/null
++++ b/piperg2p/_warnings.py
+@@ -0,0 +1,25 @@
++from __future__ import annotations
++
++import inspect
++import warnings
++
++
++def warn_external(
++    message: str,
++    category: type[Warning],
++    *,
++    package_prefix: str = "piperg2p",
++) -> None:
++    frame = inspect.currentframe()
++    try:
++        frame = frame.f_back if frame is not None else None
++        stacklevel = 2
++        while frame is not None:
++            module = frame.f_globals.get("__name__", "")
++            if not module.startswith(package_prefix):
++                break
++            stacklevel += 1
++            frame = frame.f_back
++        warnings.warn(message, category, stacklevel=stacklevel)
++    finally:
++        del frame
+diff --git a/piperg2p/api.py b/piperg2p/api.py
+index 78677a2..5aacb13 100644
+--- a/piperg2p/api.py
++++ b/piperg2p/api.py
+@@ -7,12 +7,11 @@ from collections.abc import Mapping, Sequence
+ from pathlib import Path
+ from typing import Any, Literal
+
+-from .backends import EspeakBackend
+ from .cache import cache_key, get_or_create
+ from .codec import MissingPhonemePolicy
+-from .config import PhonemeType, VoiceConfig
++from .config import VoiceConfig
+ from .errors import UnsupportedCompatibilityError
+-from .frontend import PiperFrontend
++from .frontend import EspeakMode, PiperFrontend
+ from .types import (
+     LanguageRoutingConfig,
+     OverrideSpanLike,
+@@ -100,6 +99,7 @@ class PiperG2P:
+         lexicons: str | Sequence[str] | None = None,
+         use_espeak_fallback: bool = True,
+         use_cli: bool = False,
++        espeak_mode: EspeakMode | None = None,
+         strict: bool = True,
+         missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN,
+         lexicon_store: Any = None,
+@@ -117,16 +117,17 @@ class PiperG2P:
+             spacy_model_size=spacy_model_size,
+             use_goruut_fallback=use_goruut_fallback,
+         )
++        if espeak_mode not in {None, "auto", "native", "cli"}:
++            raise ValueError("eSpeak mode must be 'auto', 'native', or 'cli'")
++        if use_cli and espeak_mode not in {None, "cli"}:
++            raise ValueError("use_cli and espeak_mode are incompatible")
++        resolved_mode: EspeakMode = "cli" if use_cli else (espeak_mode or "auto")
+         self.language = language
+         self.config = _config(config, strict=strict)
+         self.use_espeak_fallback = use_espeak_fallback
+         self._frontend = PiperFrontend(
+             self.config,
+-            backend=(
+-                EspeakBackend(mode="cli", vowel_clusters=self.config.vowel_clusters)
+-                if use_cli and self.config.phoneme_type is PhonemeType.ESPEAK
+-                else None
+-            ),
++            espeak_mode=resolved_mode,
+             missing=missing,
+             lexicons=tuple([lexicons] if isinstance(lexicons, str) else lexicons or ()),
+             lexicon_store=lexicon_store,
+@@ -202,6 +203,7 @@ def get_g2p(
+     lexicons: str | Sequence[str] | None = None,
+     use_espeak_fallback: bool = True,
+     use_cli: bool = False,
++    espeak_mode: EspeakMode | None = None,
+     strict: bool = True,
+     missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN,
+     lexicon_store: Any = None,
+@@ -213,10 +215,16 @@ def get_g2p(
+ ) -> PiperG2P:
+     normalized_config = _config(config, strict=strict)
+     lexicon_names = tuple([lexicons] if isinstance(lexicons, str) else lexicons or ())
++    if espeak_mode not in {None, "auto", "native", "cli"}:
++        raise ValueError("eSpeak mode must be 'auto', 'native', or 'cli'")
++    if use_cli and espeak_mode not in {None, "cli"}:
++        raise ValueError("use_cli and espeak_mode are incompatible")
++    resolved_mode: EspeakMode = "cli" if use_cli else (espeak_mode or "auto")
+     kwargs = {
+         "lexicons": lexicon_names,
+         "use_espeak_fallback": use_espeak_fallback,
+         "use_cli": use_cli,
++        "espeak_mode": resolved_mode,
+         "strict": strict,
+         "missing": missing,
+         "lexicon_store": lexicon_store,
+@@ -232,6 +240,7 @@ def get_g2p(
+         normalized_config,
+         language,
+         use_cli=use_cli,
++        espeak_mode=resolved_mode,
+         missing=MissingPhonemePolicy(missing).value,
+         lexicons=lexicon_names,
+         strict=strict,
+@@ -268,6 +277,7 @@ def phonemize_prepared(
+     lexicons: str | Sequence[str] | None = None,
+     use_espeak_fallback: bool = True,
+     use_cli: bool = False,
++    espeak_mode: EspeakMode | None = None,
+     strict: bool = True,
+     strict_stress: bool = False,
+     g2p: PiperG2P | None = None,
+@@ -282,6 +292,7 @@ def phonemize_prepared(
+         lexicons=lexicons,
+         use_espeak_fallback=use_espeak_fallback,
+         use_cli=use_cli,
++        espeak_mode=espeak_mode,
+         strict=strict,
+         missing=missing,
+     )
+diff --git a/piperg2p/backends/__init__.py b/piperg2p/backends/__init__.py
+index 6ec4376..f404d7b 100644
+--- a/piperg2p/backends/__init__.py
++++ b/piperg2p/backends/__init__.py
+@@ -1,13 +1,23 @@
+ """Backend implementations and compatibility exports."""
+
+ from .base import PhonemeBackend
+-from .espeak import EspeakBackend, EspeakCliBackend, NativeEspeakProvider
++from .espeak import (
++    EspeakBackend,
++    EspeakCliBackend,
++    EspeakLibraryCandidate,
++    EspeakLibraryProbe,
++    NativeEspeakProvider,
++    inspect_espeak,
++)
+ from .text import TextBackend
+
+ __all__ = [
+     "EspeakBackend",
+     "EspeakCliBackend",
++    "EspeakLibraryCandidate",
++    "EspeakLibraryProbe",
+     "NativeEspeakProvider",
+     "PhonemeBackend",
+     "TextBackend",
++    "inspect_espeak",
+ ]
+diff --git a/piperg2p/backends/espeak/__init__.py b/piperg2p/backends/espeak/__init__.py
+index 0e1de22..1e9dca4 100644
+--- a/piperg2p/backends/espeak/__init__.py
++++ b/piperg2p/backends/espeak/__init__.py
+@@ -1,13 +1,27 @@
+ from .backend import EspeakBackend
+ from .clauses import Clause, compose_clauses, merge_vowel_clusters
+ from .cli import EspeakCliBackend
+-from .discovery import EspeakPaths, discover, find_data, find_executable, find_library
++from .discovery import (
++    EspeakLibraryCandidate,
++    EspeakLibraryProbe,
++    EspeakPaths,
++    discover,
++    find_data,
++    find_executable,
++    find_library,
++    inspect_espeak,
++    iter_library_candidates,
++    probe_library_candidate,
++    select_exact_native,
++)
+ from .native import NativeEspeakProvider
+
+ __all__ = [
+     "Clause",
+     "EspeakBackend",
+     "EspeakCliBackend",
++    "EspeakLibraryCandidate",
++    "EspeakLibraryProbe",
+     "EspeakPaths",
+     "NativeEspeakProvider",
+     "compose_clauses",
+@@ -15,5 +29,9 @@ __all__ = [
+     "find_data",
+     "find_executable",
+     "find_library",
++    "inspect_espeak",
++    "iter_library_candidates",
+     "merge_vowel_clusters",
++    "probe_library_candidate",
++    "select_exact_native",
+ ]
+diff --git a/piperg2p/backends/espeak/backend.py b/piperg2p/backends/espeak/backend.py
+index 21b1208..ef7efcd 100644
+--- a/piperg2p/backends/espeak/backend.py
++++ b/piperg2p/backends/espeak/backend.py
+@@ -1,15 +1,23 @@
+ from __future__ import annotations
+
+-import warnings
+ from dataclasses import dataclass
+
++from ..._warnings import warn_external
+ from ...diagnostics import BackendDiagnostics
+ from ...errors import BackendFallbackWarning, BackendUnavailableError
++from . import discovery as discovery_module
+ from .clauses import compose_clauses
+ from .cli import EspeakCliBackend
+-from .discovery import discover
++from .discovery import (
++    EspeakLibraryProbe,
++    EspeakNativeSelection,
++    maybe_find_executable,
++    select_exact_native,
++)
+ from .native import NativeEspeakProvider
+
++discover = discovery_module.discover
++
+
+ @dataclass
+ class EspeakBackend:
+@@ -26,81 +34,151 @@ class EspeakBackend:
+         if self.mode not in {"auto", "native", "cli"}:
+             raise ValueError("eSpeak mode must be 'auto', 'native', or 'cli'")
+         self._provider: NativeEspeakProvider | EspeakCliBackend
+-        fallback_reason: str | None = None
+-        if self.mode in {"auto", "native"}:
+-            try:
+-                paths = discover(
+-                    executable=self.executable,
+-                    library=self.library,
+-                    data=self.data,
+-                    require_executable=self.mode == "auto"
+-                    or self.executable is not None,
+-                )
+-                self._provider = NativeEspeakProvider(
+-                    library=paths.library,
+-                    data=paths.data,
+-                    executable=paths.executable,
+-                    discovery_source=paths.source,
+-                    strict=self.strict_native or self.mode in {"native", "auto"},
+-                )
+-            except (BackendUnavailableError, OSError) as exc:
+-                if self.mode == "native":
+-                    raise
+-                if "lacks espeak_TextToPhonemesWithTerminator" in str(exc):
+-                    fallback_reason = "terminator API unavailable"
+-                else:
+-                    fallback_reason = f"{type(exc).__name__}: {exc}"
+-                self._provider = EspeakCliBackend(
+-                    executable=self.executable,
+-                    data_path=self.data,
+-                    vowel_clusters=self.vowel_clusters
+-                    if self.merge_vowel_clusters
+-                    else frozenset(),
+-                    timeout=self.timeout,
+-                )
++        selection: EspeakNativeSelection | None = None
++        fallback_code: str | None = None
++        fallback_detail: str | None = None
++
++        if self.mode == "cli":
++            self._provider = self._make_cli()
+         else:
+-            self._provider = EspeakCliBackend(
++            selection = select_exact_native(
++                library=self.library,
+                 executable=self.executable,
+-                data_path=self.data,
+-                vowel_clusters=self.vowel_clusters
+-                if self.merge_vowel_clusters
+-                else frozenset(),
+-                timeout=self.timeout,
++                data=self.data,
+             )
++            if selection.candidate is not None:
++                try:
++                    self._provider = NativeEspeakProvider(
++                        library=selection.candidate.library,
++                        data=selection.candidate.data,
++                        executable=maybe_find_executable(self.executable),
++                        discovery_source=selection.candidate.source,
++                        strict=True,
++                    )
++                except (BackendUnavailableError, OSError) as exc:
++                    if "espeak_TextToPhonemesWithTerminator" in str(exc):
++                        fallback_code = "terminator API unavailable"
++                        fallback_detail = "terminator API unavailable"
++                    else:
++                        fallback_code = f"{type(exc).__name__}: {exc}"
++                        fallback_detail = str(exc)
++                    if self.mode == "native":
++                        raise
++                    try:
++                        self._provider = self._make_cli()
++                    except BackendUnavailableError as cli_exc:
++                        raise BackendUnavailableError(
++                            "no exact native Piper eSpeak library found; "
++                            "CLI fallback is unavailable"
++                        ) from cli_exc
++            elif self.mode == "native":
++                raise BackendUnavailableError(self._native_error(selection.probes))
++            else:
++                fallback_code, fallback_detail = self._native_failure_reason(
++                    selection.probes, selection.explicit
++                )
++                try:
++                    self._provider = self._make_cli()
++                except BackendUnavailableError as exc:
++                    raise BackendUnavailableError(
++                        "no exact native Piper eSpeak library found; "
++                        "CLI fallback is unavailable"
++                    ) from exc
+         provider_diagnostics = self._provider.diagnostics
+-        if fallback_reason:
+-            warnings.warn(
+-                f"native eSpeak unavailable, using CLI: {fallback_reason}",
+-                BackendFallbackWarning,
+-                stacklevel=2,
++        native_candidates = selection.probes if selection is not None else ()
++        fallback_reason: str | None
++        if fallback_code is not None:
++            fallback_reason = fallback_code
++            message = self._fallback_warning(
++                fallback_code, fallback_detail or "", selection
+             )
+-            self._diagnostics = BackendDiagnostics(
+-                requested_mode=self.mode,
+-                implementation=provider_diagnostics.implementation,
+-                executable=provider_diagnostics.executable,
+-                library_path=provider_diagnostics.library_path,
+-                data_path=provider_diagnostics.data_path,
+-                discovery_source=provider_diagnostics.discovery_source,
+-                version=provider_diagnostics.version,
+-                exact_clause_api=provider_diagnostics.exact_clause_api,
+-                fallback_reason=fallback_reason,
+-                parity="best-effort",
+-                warnings=(fallback_reason,),
++            warn_external(message, BackendFallbackWarning)
++        else:
++            fallback_reason = provider_diagnostics.fallback_reason
++        self._diagnostics = BackendDiagnostics(
++            requested_mode=self.mode,
++            implementation=provider_diagnostics.implementation,
++            executable=provider_diagnostics.executable,
++            library_path=provider_diagnostics.library_path,
++            data_path=provider_diagnostics.data_path,
++            discovery_source=provider_diagnostics.discovery_source,
++            version=provider_diagnostics.version,
++            exact_clause_api=provider_diagnostics.exact_clause_api,
++            fallback_reason=fallback_reason,
++            parity=provider_diagnostics.parity,
++            warnings=(fallback_reason,)
++            if fallback_reason
++            else provider_diagnostics.warnings,
++            native_candidates=native_candidates,
++        )
++
++    def _make_cli(self) -> EspeakCliBackend:
++        return EspeakCliBackend(
++            executable=self.executable,
++            data_path=self.data,
++            vowel_clusters=self.vowel_clusters
++            if self.merge_vowel_clusters
++            else frozenset(),
++            timeout=self.timeout,
++        )
++
++    @staticmethod
++    def _native_error(probes: tuple[EspeakLibraryProbe, ...]) -> str:
++        if not probes or not any(probe.loadable for probe in probes):
++            return "no usable eSpeak native library could be loaded"
++        return (
++            "no exact Piper-compatible eSpeak native library is available; "
++            "the required symbol espeak_TextToPhonemesWithTerminator was not found"
++        )
++
++    @staticmethod
++    def _native_failure_reason(
++        probes: tuple[EspeakLibraryProbe, ...], explicit: bool
++    ) -> tuple[str, str]:
++        if not probes:
++            return (
++                "native-library-unavailable",
++                "no discovered native library was found",
++            )
++        if not any(probe.loadable for probe in probes):
++            detail = next(
++                (probe.error for probe in probes if probe.error),
++                "no discovered native library could be loaded",
++            )
++            return "native-library-load-error", detail
++        if explicit:
++            probe = probes[0]
++            return (
++                "terminator-api-unavailable",
++                f"{probe.library} does not export espeak_TextToPhonemesWithTerminator",
+             )
++        return (
++            "terminator-api-unavailable",
++            "no discovered native library exports espeak_TextToPhonemesWithTerminator",
++        )
++
++    @staticmethod
++    def _fallback_warning(
++        code: str,
++        detail: str,
++        selection: EspeakNativeSelection | None,
++    ) -> str:
++        if code == "terminator-api-unavailable":
++            if selection is not None and selection.explicit:
++                prefix = (
++                    "configured eSpeak library does not provide the exact "
++                    "Piper clause API; using CLI best-effort fallback: "
++                )
++            else:
++                prefix = (
++                    "exact Piper eSpeak clause API unavailable; using CLI "
++                    "best-effort fallback: "
++                )
+         else:
+-            self._diagnostics = BackendDiagnostics(
+-                requested_mode=self.mode,
+-                implementation=provider_diagnostics.implementation,
+-                executable=provider_diagnostics.executable,
+-                library_path=provider_diagnostics.library_path,
+-                data_path=provider_diagnostics.data_path,
+-                discovery_source=provider_diagnostics.discovery_source,
+-                version=provider_diagnostics.version,
+-                exact_clause_api=provider_diagnostics.exact_clause_api,
+-                fallback_reason=provider_diagnostics.fallback_reason,
+-                parity=provider_diagnostics.parity,
+-                warnings=provider_diagnostics.warnings,
++            prefix = (
++                "native eSpeak library unavailable; using CLI best-effort fallback: "
+             )
++        return prefix + detail
+
+     @property
+     def diagnostics(self) -> BackendDiagnostics:
+diff --git a/piperg2p/backends/espeak/discovery.py b/piperg2p/backends/espeak/discovery.py
+index 5a71ffc..7c86877 100644
+--- a/piperg2p/backends/espeak/discovery.py
++++ b/piperg2p/backends/espeak/discovery.py
+@@ -1,11 +1,13 @@
+ from __future__ import annotations
+
++import ctypes
+ import ctypes.util
+ import os
+ import shutil
+ from dataclasses import dataclass
+ from pathlib import Path
+
++from ...diagnostics import EspeakCapabilities
+ from ...errors import BackendUnavailableError
+
+
+@@ -17,6 +19,31 @@ class EspeakPaths:
+     source: str = "system"
+
+
++@dataclass(frozen=True, slots=True)
++class EspeakLibraryCandidate:
++    library: str
++    source: str
++    data: str | None = None
++    explicit: bool = False
++
++
++@dataclass(frozen=True, slots=True)
++class EspeakLibraryProbe:
++    library: str
++    source: str
++    data: str | None
++    loadable: bool
++    exact_clause_api: bool
++    error: str | None = None
++
++
++@dataclass(frozen=True, slots=True)
++class EspeakNativeSelection:
++    candidate: EspeakLibraryCandidate | None
++    probes: tuple[EspeakLibraryProbe, ...]
++    explicit: bool
++
++
+ def _modern_loader_paths() -> tuple[str | None, str | None] | None:
+     try:
+         import espeakng_loader  # type: ignore[import-untyped]
+@@ -29,6 +56,26 @@ def _modern_loader_paths() -> tuple[str | None, str | None] | None:
+     return None
+
+
++def _candidate_identity(value: str) -> str:
++    path = Path(value)
++    if path.is_absolute() or path.exists():
++        try:
++            return str(path.resolve())
++        except OSError:
++            return str(path)
++    return value
++
++
++def maybe_find_executable(explicit: str | None = None) -> str | None:
++    candidate = explicit or os.environ.get("PIPERG2P_ESPEAK_EXECUTABLE")
++    if candidate:
++        if Path(candidate).is_file():
++            return str(Path(candidate))
++        found = shutil.which(candidate)
++        return str(found) if found else None
++    return shutil.which("espeak-ng") or shutil.which("espeak")
++
++
+ def find_executable(explicit: str | None = None) -> str:
+     candidate = explicit or os.environ.get("PIPERG2P_ESPEAK_EXECUTABLE")
+     if candidate:
+@@ -67,15 +114,37 @@ def find_library(
+         if found:
+             return found
+     if executable:
+-        root = Path(executable).resolve().parent.parent
+-        candidates = list((root / "lib").glob("libespeak*.so*")) + list(
+-            (root / "bin").glob("libespeak*.dll")
+-        )
++        candidates = _near_executable_candidates(executable)
+         if candidates:
+             return str(candidates[0])
+     return None
+
+
++def _near_executable_candidates(executable: str | None) -> tuple[Path, ...]:
++    if not executable or "/" not in executable and "\\" not in executable:
++        return ()
++    path = Path(executable).resolve()
++    root = path.parent.parent
++    candidates = list((root / "lib").glob("libespeak*.so*")) + list(
++        (root / "bin").glob("libespeak*.dll")
++    )
++    return tuple(candidates)
++
++
++def _derived_data(executable: str | None, library: str | None) -> str | None:
++    candidates: list[Path] = []
++    for value in (executable, library):
++        if value and ("/" in value or "\\" in value):
++            path = Path(value).resolve()
++            roots = [path.parent, path.parent.parent]
++            candidates.extend(root / "share" / "espeak-ng-data" for root in roots)
++            candidates.extend(root / "espeak-ng-data" for root in roots)
++    for path in candidates:
++        if path.is_dir():
++            return str(path)
++    return None
++
++
+ def find_data(
+     explicit: str | None = None,
+     executable: str | None = None,
+@@ -92,17 +161,151 @@ def find_data(
+     packaged = _modern_loader_paths()
+     if packaged is not None and packaged[1] is not None:
+         return packaged[1]
+-    candidates: list[Path] = []
+-    for value in (executable, library):
+-        if value and "/" in value:
+-            path = Path(value).resolve()
+-            roots = [path.parent, path.parent.parent]
+-            candidates.extend(root / "share" / "espeak-ng-data" for root in roots)
+-            candidates.extend(root / "espeak-ng-data" for root in roots)
+-    for path in candidates:
+-        if path.is_dir():
+-            return str(path)
+-    return None
++    return _derived_data(executable, library)
++
++
++def _candidate_data(
++    candidate: EspeakLibraryCandidate,
++    *,
++    executable: str | None,
++    data: str | None,
++) -> str | None:
++    if data is not None or os.environ.get("PIPERG2P_ESPEAK_DATA") is not None:
++        return data or os.environ.get("PIPERG2P_ESPEAK_DATA")
++    if candidate.data is not None:
++        return candidate.data
++    return _derived_data(executable, candidate.library)
++
++
++def iter_library_candidates(
++    explicit: str | None = None,
++    *,
++    executable: str | None = None,
++    data: str | None = None,
++) -> tuple[EspeakLibraryCandidate, ...]:
++    configured = explicit or os.environ.get("PIPERG2P_ESPEAK_LIBRARY")
++    if configured:
++        candidate = EspeakLibraryCandidate(
++            configured,
++            "explicit",
++            explicit=True,
++        )
++        return (
++            EspeakLibraryCandidate(
++                candidate.library,
++                candidate.source,
++                _candidate_data(candidate, executable=executable, data=data),
++                candidate.explicit,
++            ),
++        )
++
++    values: list[EspeakLibraryCandidate] = []
++    packaged = _modern_loader_paths()
++    if packaged is not None and packaged[0] is not None:
++        values.append(EspeakLibraryCandidate(packaged[0], "modern-loader", packaged[1]))
++    for name, source in (
++        ("espeak-ng", "system-espeak-ng"),
++        ("espeak", "system-espeak"),
++    ):
++        library = ctypes.util.find_library(name)
++        if library:
++            values.append(EspeakLibraryCandidate(library, source))
++    executable_candidate = executable or maybe_find_executable()
++    values.extend(
++        EspeakLibraryCandidate(str(path), "near-executable")
++        for path in _near_executable_candidates(executable_candidate)
++    )
++    result: list[EspeakLibraryCandidate] = []
++    identities: set[str] = set()
++    for candidate in values:
++        identity = _candidate_identity(candidate.library)
++        if identity in identities:
++            continue
++        identities.add(identity)
++        result.append(
++            EspeakLibraryCandidate(
++                candidate.library,
++                candidate.source,
++                _candidate_data(
++                    candidate,
++                    executable=executable_candidate,
++                    data=data,
++                ),
++            )
++        )
++    return tuple(result)
++
++
++def probe_library_candidate(
++    candidate: EspeakLibraryCandidate,
++) -> EspeakLibraryProbe:
++    try:
++        library = ctypes.CDLL(candidate.library)
++    except OSError as exc:
++        return EspeakLibraryProbe(
++            candidate.library,
++            candidate.source,
++            candidate.data,
++            False,
++            False,
++            str(exc),
++        )
++    return EspeakLibraryProbe(
++        candidate.library,
++        candidate.source,
++        candidate.data,
++        True,
++        hasattr(library, "espeak_TextToPhonemesWithTerminator"),
++        None,
++    )
++
++
++def select_exact_native(
++    *,
++    library: str | None = None,
++    executable: str | None = None,
++    data: str | None = None,
++) -> EspeakNativeSelection:
++    candidates = iter_library_candidates(
++        library,
++        executable=executable,
++        data=data,
++    )
++    probes: list[EspeakLibraryProbe] = []
++    for candidate in candidates:
++        probe = probe_library_candidate(candidate)
++        probes.append(probe)
++        if probe.exact_clause_api:
++            return EspeakNativeSelection(candidate, tuple(probes), candidate.explicit)
++    return EspeakNativeSelection(
++        None,
++        tuple(probes),
++        bool(candidates and candidates[0].explicit),
++    )
++
++
++def inspect_espeak(
++    *,
++    executable: str | None = None,
++    library: str | None = None,
++    data: str | None = None,
++) -> EspeakCapabilities:
++
++    found_executable = maybe_find_executable(executable)
++    selection = select_exact_native(
++        library=library,
++        executable=executable,
++        data=data,
++    )
++    candidate = selection.candidate
++    return EspeakCapabilities(
++        executable=found_executable,
++        cli_available=found_executable is not None,
++        selected_exact_library=candidate.library if candidate else None,
++        selected_source=candidate.source if candidate else None,
++        selected_data=candidate.data if candidate else None,
++        candidates=selection.probes,
++    )
+
+
+ def discover(
+diff --git a/piperg2p/cache.py b/piperg2p/cache.py
+index c0d1c75..313589f 100644
+--- a/piperg2p/cache.py
++++ b/piperg2p/cache.py
+@@ -32,11 +32,13 @@ def cache_key(
+     lexicons: tuple[str, ...],
+     strict: bool,
+     use_espeak_fallback: bool,
++    espeak_mode: str = "auto",
+ ) -> str:
+     value = {
+         "language": language.casefold().replace("_", "-"),
+         "config": config_fingerprint(config),
+         "use_cli": use_cli,
++        "espeak_mode": espeak_mode,
+         "missing": missing,
+         "lexicons": lexicons,
+         "strict": strict,
+diff --git a/piperg2p/diagnostics.py b/piperg2p/diagnostics.py
+index 259c0ee..2c7c45f 100644
+--- a/piperg2p/diagnostics.py
++++ b/piperg2p/diagnostics.py
+@@ -6,9 +6,24 @@ from dataclasses import dataclass
+ from typing import TYPE_CHECKING
+
+ if TYPE_CHECKING:
++    from .backends.espeak.discovery import EspeakLibraryProbe
+     from .lexicons.base import LexiconDiagnostics
+
+
++@dataclass(frozen=True, slots=True)
++class EspeakCapabilities:
++    executable: str | None
++    cli_available: bool
++    selected_exact_library: str | None
++    selected_source: str | None
++    selected_data: str | None
++    candidates: tuple[EspeakLibraryProbe, ...] = ()
++
++    @property
++    def exact_native_available(self) -> bool:
++        return self.selected_exact_library is not None
++
++
+ @dataclass(frozen=True)
+ class BackendDiagnostics:
+     requested_mode: str = "text"
+@@ -22,6 +37,7 @@ class BackendDiagnostics:
+     fallback_reason: str | None = None
+     parity: str = "exact"
+     warnings: tuple[str, ...] = ()
++    native_candidates: tuple[EspeakLibraryProbe, ...] = ()
+
+
+ @dataclass(frozen=True)
+diff --git a/piperg2p/frontend.py b/piperg2p/frontend.py
+index 129349b..3d9cea1 100644
+--- a/piperg2p/frontend.py
++++ b/piperg2p/frontend.py
+@@ -2,7 +2,7 @@ from __future__ import annotations
+
+ from collections.abc import Iterable, Sequence
+ from pathlib import Path
+-from typing import Any
++from typing import Any, Literal
+
+ from .backends import EspeakBackend, PhonemeBackend
+ from .codec import EncodeResult, MissingPhonemePolicy
+@@ -19,6 +19,8 @@ from .raw_blocks import compose_raw_segments, parse_raw_blocks
+ from .registry import spec_for
+ from .types import PhonemeSentence, PhonemizeResult
+
++EspeakMode = Literal["auto", "native", "cli"]
++
+
+ def _is_arabic_voice(voice: str) -> bool:
+     normalized = voice.casefold().replace("_", "-")
+@@ -33,12 +35,18 @@ class PiperFrontend:
+         config: VoiceConfig,
+         *,
+         backend: PhonemeBackend | None = None,
++        espeak_mode: EspeakMode = "auto",
+         missing: MissingPhonemePolicy | str = MissingPhonemePolicy.WARN,
+         lexicons: Sequence[str] = (),
+         lexicon_store: Any = None,
+         lexicon_backend: PronunciationLookup | None = None,
+         use_espeak_fallback: bool = True,
+     ) -> None:
++        if espeak_mode not in {"auto", "native", "cli"}:
++            raise ValueError("eSpeak mode must be 'auto', 'native', or 'cli'")
++        if backend is not None and espeak_mode != "auto":
++            raise ValueError("backend and espeak_mode are mutually exclusive")
++        self.espeak_mode = espeak_mode
+         self.use_espeak_fallback = use_espeak_fallback
+         self.config = config
+         self.missing = MissingPhonemePolicy(missing)
+@@ -73,12 +81,13 @@ class PiperFrontend:
+         return bool(self._lexicon_identifiers or self._lexicon_backend is not None)
+
+     def _make_backend(self) -> PhonemeBackend:
+-        if self.config.phoneme_type in {PhonemeType.TEXT, PhonemeType.ESPEAK}:
+-            if self.config.phoneme_type is PhonemeType.ESPEAK and self._lexicon_enabled:
+-                return EspeakBackend(
+-                    vowel_clusters=self.config.vowel_clusters,
+-                    merge_vowel_clusters=False,
+-                )
++        if self.config.phoneme_type is PhonemeType.ESPEAK:
++            return EspeakBackend(
++                mode=self.espeak_mode,
++                vowel_clusters=self.config.vowel_clusters,
++                merge_vowel_clusters=not self._lexicon_enabled,
++            )
++        if self.config.phoneme_type is PhonemeType.TEXT:
+             assert self._spec.backend_factory is not None
+             return self._spec.backend_factory(self.config)
+         if not self._spec.implemented or self._spec.backend_factory is None:
+diff --git a/tests/test_espeak_backend_selection.py b/tests/test_espeak_backend_selection.py
+index 6331b33..8801514 100644
+--- a/tests/test_espeak_backend_selection.py
++++ b/tests/test_espeak_backend_selection.py
+@@ -1,6 +1,7 @@
+ from __future__ import annotations
+
+ import types
++import warnings
+
+ import pytest
+
+@@ -126,3 +127,48 @@ def test_cli_mode_never_attempts_native(monkeypatch):
+     assert calls == {"native": 0, "cli": 1}
+     assert backend.diagnostics.implementation == "cli"
+     backend.close()
++
++
++def test_warning_origin_is_external(monkeypatch):
++    from piperg2p.backends.espeak.discovery import (
++        EspeakLibraryProbe,
++        EspeakNativeSelection,
++    )
++
++    probe = EspeakLibraryProbe("old", "system-espeak", None, True, False)
++    monkeypatch.setattr(
++        backend_module,
++        "select_exact_native",
++        lambda **kwargs: EspeakNativeSelection(None, (probe,), False),
++    )
++
++    class Cli:
++        diagnostics = types.SimpleNamespace(
++            implementation="cli",
++            executable="espeak-ng",
++            library_path=None,
++            data_path=None,
++            discovery_source="test",
++            version=None,
++            exact_clause_api=False,
++            fallback_reason=None,
++            parity="best-effort",
++            warnings=(),
++        )
++
++        def __init__(self, **kwargs):
++            del kwargs
++
++        def close(self):
++            pass
++
++    monkeypatch.setattr(backend_module, "EspeakCliBackend", Cli)
++
++    with warnings.catch_warnings(record=True) as caught:
++        warnings.simplefilter("always")
++        backend = EspeakBackend(mode="auto")
++
++    assert len(caught) == 1
++    assert caught[0].filename != "<string>"
++    assert "/piperg2p/backends/" not in caught[0].filename.replace("\\", "/")
++    backend.close()
+diff --git a/tests/test_espeak_inspection.py b/tests/test_espeak_inspection.py
+new file mode 100644
+index 0000000..de875e0
+--- /dev/null
++++ b/tests/test_espeak_inspection.py
+@@ -0,0 +1,99 @@
++from __future__ import annotations
++
++import sys
++import types
++import warnings
++
++from piperg2p import EspeakLibraryCandidate, inspect_espeak
++from piperg2p.backends.espeak import discovery
++
++
++def test_inspection_selects_exact_later_candidate_without_initializing(
++    monkeypatch, tmp_path
++):
++    loader_library = tmp_path / "loader.so"
++    loader_library.write_bytes(b"")
++    monkeypatch.setitem(
++        sys.modules,
++        "espeakng_loader",
++        types.SimpleNamespace(
++            get_library_path=lambda: str(loader_library),
++            get_data_path=lambda: None,
++        ),
++    )
++    monkeypatch.setattr(
++        discovery.ctypes.util,
++        "find_library",
++        lambda name: {"espeak-ng": "system-ng", "espeak": "system"}.get(name),
++    )
++    calls: list[str] = []
++
++    class OldLibrary:
++        pass
++
++    class ExactLibrary:
++        espeak_TextToPhonemesWithTerminator = object()
++
++    def load(value: str):
++        calls.append(value)
++        return ExactLibrary() if value == "system-ng" else OldLibrary()
++
++    monkeypatch.setattr(discovery.ctypes, "CDLL", load)
++    monkeypatch.setattr(discovery, "maybe_find_executable", lambda explicit=None: None)
++
++    with warnings.catch_warnings(record=True) as caught:
++        warnings.simplefilter("always")
++        info = inspect_espeak()
++
++    assert not caught
++    assert calls == [str(loader_library), "system-ng"]
++    assert info.selected_exact_library == "system-ng"
++    assert info.selected_source == "system-espeak-ng"
++    assert info.exact_native_available
++    assert not info.cli_available
++    assert [probe.source for probe in info.candidates] == [
++        "modern-loader",
++        "system-espeak-ng",
++        "system-espeak",
++    ][: len(info.candidates)]
++
++
++def test_inspection_explicit_library_is_authoritative(monkeypatch):
++    monkeypatch.setenv("PIPERG2P_ESPEAK_LIBRARY", "explicit-old")
++    monkeypatch.setattr(
++        discovery.ctypes.util, "find_library", lambda name: "system-exact"
++    )
++    calls: list[str] = []
++
++    class OldLibrary:
++        pass
++
++    def load(value: str):
++        calls.append(value)
++        return OldLibrary()
++
++    monkeypatch.setattr(discovery.ctypes, "CDLL", load)
++    monkeypatch.setattr(
++        discovery, "maybe_find_executable", lambda explicit=None: "espeak"
++    )
++
++    info = inspect_espeak()
++
++    assert calls == ["explicit-old"]
++    assert info.selected_exact_library is None
++    assert not info.exact_native_available
++    assert len(info.candidates) == 1
++    assert info.candidates[0].source == "explicit"
++    assert info.candidates[0].loadable
++    assert not info.candidates[0].exact_clause_api
++
++
++def test_candidate_type_is_immutable():
++    candidate = EspeakLibraryCandidate("libespeak-ng.so", "system-espeak-ng")
++
++    try:
++        candidate.library = "other"
++    except AttributeError:
++        pass
++    else:
++        raise AssertionError("candidate should be immutable")
+diff --git a/tests/test_espeak_mode.py b/tests/test_espeak_mode.py
+new file mode 100644
+index 0000000..1455d48
+--- /dev/null
++++ b/tests/test_espeak_mode.py
+@@ -0,0 +1,47 @@
++from __future__ import annotations
++
++import pytest
++
++from piperg2p import PiperFrontend, PiperG2P, VoiceConfig, clear_cache, get_g2p
++
++
++def _text_config() -> VoiceConfig:
++    return VoiceConfig.from_dict(
++        {
++            "num_symbols": 6,
++            "num_speakers": 1,
++            "audio": {"sample_rate": 22050},
++            "phoneme_type": "text",
++            "phoneme_id_map": {"_": 0, "^": 1, "$": 2, "a": 3, "b": 4, " ": 5},
++        }
++    )
++
++
++def test_custom_backend_rejects_non_default_espeak_mode():
++    config = _text_config()
++
++    with pytest.raises(ValueError, match="mutually exclusive"):
++        PiperFrontend(config, backend=object(), espeak_mode="native")
++
++
++def test_use_cli_remains_compatible_and_resolves_cli_mode():
++    g2p = PiperG2P("en-us", _text_config(), use_cli=True)
++
++    assert g2p.frontend.espeak_mode == "cli"
++    g2p.close()
++
++
++def test_conflicting_use_cli_and_espeak_mode_is_rejected():
++    with pytest.raises(ValueError, match="incompatible"):
++        PiperG2P("en-us", _text_config(), use_cli=True, espeak_mode="native")
++
++
++def test_cache_identity_includes_espeak_mode():
++    clear_cache()
++    first = get_g2p("en-us", config=_text_config(), espeak_mode="auto")
++    second = get_g2p("en-us", config=_text_config(), espeak_mode="native")
++
++    assert first is not second
++    first.close()
++    second.close()
++    clear_cache()

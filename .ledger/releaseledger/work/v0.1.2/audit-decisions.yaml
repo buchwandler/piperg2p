@@ -1,0 +1,47 @@
+rows:
+  - sha: dfed7526f63a77ac43df9607e4be4d37996172c9
+    inspected: true
+    inspected_paths:
+      - piperg2p/_warnings.py
+      - piperg2p/diagnostics.py
+      - piperg2p/backends/espeak/discovery.py
+      - piperg2p/backends/espeak/backend.py
+      - tests/test_espeak_inspection.py
+    observed_behavior: Added `inspect_espeak()` non-initializing diagnostics and native library auto-discovery with priority scanning, `EspeakCapabilities`/`EspeakLibraryCandidate`/`EspeakLibraryProbe` types, and `warn_external()` helper for correct warning stack frames
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: ""
+    stale: false
+  - sha: d1707b60b5e5330c3419613a083dd43d2eb45d47
+    inspected: true
+    inspected_paths:
+      - piperg2p/backends/espeak/backend.py
+      - piperg2p/backends/espeak/cli.py
+      - piperg2p/backends/espeak/discovery.py
+      - piperg2p/backends/espeak/native.py
+      - pyproject.toml
+    observed_behavior: Delegated eSpeak discovery, native execution, CLI execution, voice selection, and lifetime management to espeakng-runtime; added espeakng-runtime as runtime dependency; retained Piper local clause composition and phoneme policy
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: ""
+    stale: false
+  - sha: 53fc9b67cb6e38ee0e19fdbc77b2f8a4176b3d6e
+    inspected: true
+    inspected_paths:
+      - piperg2p/__init__.py
+      - piperg2p/backends/__init__.py
+      - piperg2p/backends/espeak/__init__.py
+      - piperg2p/backends/espeak/clauses.py
+      - piperg2p/frontend.py
+      - piperg2p/registry.py
+    observed_behavior: Changed eSpeak backend exports to lazy imports for faster module loading; fixed runtime clause conversion with TYPE_CHECKING guard
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: ""
+    stale: false

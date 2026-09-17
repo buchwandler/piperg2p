@@ -1,0 +1,98 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 1
+release_version: v0.1.2
+git_base_ref: v0.1.1
+git_base_sha: 4dbbd36f971926283192e3ff571fdc382ae11780
+git_head_ref: HEAD
+git_head_sha: 53fc9b67cb6e38ee0e19fdbc77b2f8a4176b3d6e
+git_range: 4dbbd36f971926283192e3ff571fdc382ae11780..53fc9b67cb6e38ee0e19fdbc77b2f8a4176b3d6e
+commit_count: 3
+rows:
+  - sha: dfed7526f63a77ac43df9607e4be4d37996172c9
+    source_ref: git:dfed7526f63a77ac43df9607e4be4d37996172c9
+    short_sha: dfed752
+    changed_paths:
+      - CHANGELOG.md
+      - README.md
+      - docs/espeak.md
+      - docs/installation.md
+      - piperg2p/__init__.py
+      - piperg2p/_warnings.py
+      - piperg2p/api.py
+      - piperg2p/backends/__init__.py
+      - piperg2p/backends/espeak/__init__.py
+      - piperg2p/backends/espeak/backend.py
+      - piperg2p/backends/espeak/discovery.py
+      - piperg2p/cache.py
+      - piperg2p/diagnostics.py
+      - piperg2p/frontend.py
+      - tests/test_espeak_backend_selection.py
+      - tests/test_espeak_inspection.py
+      - tests/test_espeak_mode.py
+    stats:
+      files_changed: 17
+      insertions: 726
+      deletions: 108
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: better espeak backend logic"
+  - sha: d1707b60b5e5330c3419613a083dd43d2eb45d47
+    source_ref: git:d1707b60b5e5330c3419613a083dd43d2eb45d47
+    short_sha: d1707b6
+    changed_paths:
+      - README.md
+      - docs/api/backends.md
+      - docs/espeak.md
+      - docs/installation.md
+      - docs/provenance.md
+      - piperg2p/backends/espeak/backend.py
+      - piperg2p/backends/espeak/clauses.py
+      - piperg2p/backends/espeak/cli.py
+      - piperg2p/backends/espeak/discovery.py
+      - piperg2p/backends/espeak/manager.py
+      - piperg2p/backends/espeak/native.py
+      - pyproject.toml
+      - tests/test_clause_backend.py
+      - tests/test_dependency_contract.py
+      - tests/test_espeak_backend_selection.py
+      - tests/test_espeak_exact_contract.py
+      - tests/test_espeak_inspection.py
+    stats:
+      files_changed: 17
+      insertions: 1006
+      deletions: 984
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: use espeak library"
+  - sha: 53fc9b67cb6e38ee0e19fdbc77b2f8a4176b3d6e
+    source_ref: git:53fc9b67cb6e38ee0e19fdbc77b2f8a4176b3d6e
+    short_sha: 53fc9b6
+    changed_paths:
+      - piperg2p/__init__.py
+      - piperg2p/backends/__init__.py
+      - piperg2p/backends/espeak/__init__.py
+      - piperg2p/backends/espeak/clauses.py
+      - piperg2p/frontend.py
+      - piperg2p/registry.py
+    stats:
+      files_changed: 6
+      insertions: 107
+      deletions: 40
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: fix espeak"
