@@ -41,5 +41,5 @@ def test_espeakng_runtime_floor() -> None:
         for item in _piperg2p_requirements()
         if _normalized_name(item) == "espeakng-runtime" and item.marker is None
     )
-    assert ">=0.1.0" in str(requirement.specifier)
+    assert ">=0.1.3" in str(requirement.specifier)
     assert "<0.2" in str(requirement.specifier)

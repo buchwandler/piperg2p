@@ -12,7 +12,7 @@ from espeakng_runtime.errors import PhonemizationError as RuntimePhonemizationEr
 from ...diagnostics import BackendDiagnostics
 from ...errors import BackendUnavailableError, PhonemizationError
 from .backend import _diagnostics_from_runtime, _runtime_paths
-from .clauses import Clause, from_runtime_clause, split_cli_clauses
+from .clauses import Clause, best_effort_clauses, from_runtime_clause
 
 
 class NativeEspeakProvider:
@@ -65,14 +65,7 @@ class NativeEspeakProvider:
                     from_runtime_clause(value)
                     for value in self._runtime.clauses(text, voice=voice, exact=True)
                 ]
-            return [
-                Clause(
-                    phonemes=self._runtime.phonemize(body, voice=voice),
-                    terminator=terminator,
-                    sentence_end=sentence_end,
-                )
-                for body, terminator, sentence_end in split_cli_clauses(text)
-            ]
+            return best_effort_clauses(self._runtime, text, voice=voice)
         except (VoiceNotFoundError, RuntimePhonemizationError) as exc:
             raise PhonemizationError(str(exc)) from exc
         except CapabilityError as exc:

@@ -51,6 +51,10 @@ class FakeRuntime:
             )
         ]
 
+    def phonemize_many(self, texts: list[str], *, voice: str) -> list[str]:
+        self.calls.append(("phonemize_many", (texts, voice)))
+        return [self.phonemize(text, voice=voice) for text in texts]
+
     def close(self) -> None:
         pass
 
@@ -79,7 +83,7 @@ def test_cli_compatibility_wrapper_uses_runtime_and_local_splitter(monkeypatch):
 
     assert backend.phonemize("hé", voice="en-us") == [["h", "ɛ", "l", "ə"]]
     assert backend.diagnostics.parity == "best-effort"
-    assert backend._runtime.calls == [("phonemize", ("hé", "en-us"))]
+    assert any(call[0] == "phonemize_many" for call in backend._runtime.calls)
     backend.close()
 
 

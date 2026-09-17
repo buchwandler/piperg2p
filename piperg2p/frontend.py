@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
+
+from espeakng_runtime import Mode as EspeakMode
 
 from .backends import PhonemeBackend
 from .codec import EncodeResult, MissingPhonemePolicy
@@ -18,8 +20,6 @@ from .lexicons.overlay import compose_lexicon_overlay
 from .raw_blocks import compose_raw_segments, parse_raw_blocks
 from .registry import spec_for
 from .types import PhonemeSentence, PhonemizeResult
-
-EspeakMode = Literal["auto", "native", "cli"]
 
 
 def _is_arabic_voice(voice: str) -> bool:

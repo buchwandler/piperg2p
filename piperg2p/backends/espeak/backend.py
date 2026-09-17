@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from espeakng_runtime import EspeakRuntime, RuntimeInfo, inspect_espeak
+from espeakng_runtime import EspeakRuntime, RuntimeInfo
 from espeakng_runtime.errors import (
     CapabilityError,
     EspeakConflictError,
@@ -20,10 +20,9 @@ from ...errors import (
     PhonemizationError,
 )
 from .clauses import (
-    Clause,
+    best_effort_clauses,
     compose_clauses,
     from_runtime_clause,
-    split_cli_clauses,
 )
 
 
@@ -138,13 +137,7 @@ class EspeakBackend:
             )
         native_candidates: tuple[object, ...] = ()
         if self.mode != "cli":
-            inspection = inspect_espeak(
-                executable=executable,
-                library=library,
-                data=data,
-                require_exact_clauses=True,
-            )
-            native_candidates = inspection.candidates
+            native_candidates = self._runtime.native_probes
         fallback_reason = info.fallback_reason
         warnings: tuple[str, ...] = ()
         if self.mode == "auto" and info.implementation == "cli" and fallback_reason:
@@ -177,14 +170,7 @@ class EspeakBackend:
                     raise BackendUnavailableError(
                         "native eSpeak runtime lacks Piper's exact clause capability"
                     )
-                clauses = [
-                    Clause(
-                        phonemes=self._runtime.phonemize(body, voice=voice),
-                        terminator=terminator,
-                        sentence_end=sentence_end,
-                    )
-                    for body, terminator, sentence_end in split_cli_clauses(text)
-                ]
+                clauses = best_effort_clauses(self._runtime, text, voice=voice)
         except BackendUnavailableError:
             raise
         except (VoiceNotFoundError, RuntimePhonemizationError) as exc:

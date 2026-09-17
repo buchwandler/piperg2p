@@ -14,7 +14,7 @@ from espeakng_runtime.errors import PhonemizationError as RuntimePhonemizationEr
 from ...diagnostics import BackendDiagnostics
 from ...errors import BackendUnavailableError, PhonemizationError
 from .backend import _diagnostics_from_runtime, _runtime_paths
-from .clauses import Clause, compose_clauses, split_cli_clauses
+from .clauses import best_effort_clauses, compose_clauses
 
 
 @dataclass
@@ -54,14 +54,7 @@ class EspeakCliBackend:
         if not text:
             return []
         try:
-            clauses = [
-                Clause(
-                    phonemes=self._runtime.phonemize(body, voice=voice),
-                    terminator=terminator,
-                    sentence_end=sentence_end,
-                )
-                for body, terminator, sentence_end in split_cli_clauses(text)
-            ]
+            clauses = best_effort_clauses(self._runtime, text, voice=voice)
         except (VoiceNotFoundError, RuntimePhonemizationError) as exc:
             raise PhonemizationError(str(exc)) from exc
         except CapabilityError as exc:

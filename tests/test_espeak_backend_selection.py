@@ -49,6 +49,10 @@ class FakeRuntime:
         self.phoneme_calls.append((text, voice))
         return text
 
+    @property
+    def native_probes(self) -> tuple[object, ...]:
+        return self.native_probes_value
+
     def close(self) -> None:
         self.closed = True
 
@@ -57,12 +61,8 @@ class FakeRuntime:
 def reset_fake_runtime(monkeypatch: pytest.MonkeyPatch):
     FakeRuntime.instances = []
     FakeRuntime.error = None
+    FakeRuntime.native_probes_value = ()
     monkeypatch.setattr(backend_module, "EspeakRuntime", FakeRuntime)
-    monkeypatch.setattr(
-        backend_module,
-        "inspect_espeak",
-        lambda **kwargs: types.SimpleNamespace(candidates=()),
-    )
 
 
 def test_auto_uses_runtime_native_without_warning():
@@ -107,22 +107,18 @@ def test_native_runtime_failure_maps_to_backend_unavailable():
         EspeakBackend(mode="native")
 
 
-def test_cli_uses_runtime_cli_without_native_inspection_or_warning(monkeypatch):
+def test_cli_uses_runtime_cli_without_native_inspection_or_warning():
     FakeRuntime.info_value = _info(mode="cli", implementation="cli")
-    inspect_calls: list[object] = []
-    monkeypatch.setattr(
-        backend_module, "inspect_espeak", lambda **kwargs: inspect_calls.append(kwargs)
-    )
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         backend = EspeakBackend(mode="cli")
 
-    assert not inspect_calls
     assert not [
         item for item in caught if issubclass(item.category, BackendFallbackWarning)
     ]
     assert FakeRuntime.instances[0].kwargs["prefer_exact_clauses"] is False
+    assert backend.diagnostics.native_candidates == ()
     backend.close()
 
 
@@ -180,7 +176,7 @@ def test_legacy_environment_overrides_runtime_environment(monkeypatch):
     backend.close()
 
 
-def test_diagnostics_map_runtime_info_and_native_candidates(monkeypatch):
+def test_diagnostics_map_runtime_info_and_native_candidates():
     FakeRuntime.info_value = types.SimpleNamespace(
         requested_mode="auto",
         implementation="native",
@@ -202,11 +198,7 @@ def test_diagnostics_map_runtime_info_and_native_candidates(monkeypatch):
         exact_clause_api=True,
         error=None,
     )
-    monkeypatch.setattr(
-        backend_module,
-        "inspect_espeak",
-        lambda **kwargs: types.SimpleNamespace(candidates=(probe,)),
-    )
+    FakeRuntime.native_probes_value = (probe,)
 
     backend = EspeakBackend(mode="auto")
     diagnostics = backend.diagnostics

@@ -91,3 +91,27 @@ def split_cli_clauses(text: str) -> list[tuple[str, str | None, bool]]:
         if position >= len(text):
             break
     return clauses
+
+
+def best_effort_clauses(
+    runtime: object,
+    text: str,
+    *,
+    voice: str,
+) -> list[Clause]:
+    """Batch CLI clause phonemization through runtime.phonemize_many()."""
+    parts = split_cli_clauses(text)
+    if not parts:
+        return []
+    values: list[str] = runtime.phonemize_many(
+        [body for body, _, _ in parts],
+        voice=voice,
+    )
+    return [
+        Clause(
+            phonemes=value,
+            terminator=terminator,
+            sentence_end=sentence_end,
+        )
+        for value, (_, terminator, sentence_end) in zip(values, parts, strict=True)
+    ]

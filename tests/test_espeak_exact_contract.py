@@ -70,6 +70,14 @@ class Runtime:
         self.calls.append(("phonemize", (text, voice)))
         return text
 
+    def phonemize_many(self, texts: list[str], *, voice: str) -> list[str]:
+        self.calls.append(("phonemize_many", (texts, voice)))
+        return [self.phonemize(text, voice=voice) for text in texts]
+
+    @property
+    def native_probes(self) -> tuple[object, ...]:
+        return self.native_probes_value
+
     def close(self) -> None:
         pass
 
@@ -78,12 +86,8 @@ class Runtime:
 def patch_runtime(monkeypatch: pytest.MonkeyPatch):
     Runtime.error = None
     Runtime.info_value = _info()
+    Runtime.native_probes_value = ()
     monkeypatch.setattr(backend_module, "EspeakRuntime", Runtime)
-    monkeypatch.setattr(
-        backend_module,
-        "inspect_espeak",
-        lambda **kwargs: types.SimpleNamespace(candidates=()),
-    )
 
 
 def test_native_exact_conversion_uses_runtime_clause_codes_only_at_runtime_boundary():
@@ -105,7 +109,7 @@ def test_cli_policy_uses_local_splitter_and_not_runtime_clauses():
         [" ", "W", "o", "r", "l", "d", "?"],
         ["!"],
     ]
-    assert all(call[0] == "phonemize" for call in backend._runtime.calls)
+    assert any(call[0] == "phonemize_many" for call in backend._runtime.calls)
     backend.close()
 
 
