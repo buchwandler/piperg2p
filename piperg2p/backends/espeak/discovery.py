@@ -45,6 +45,7 @@ class EspeakLibraryProbe:
     data: str | None
     loadable: bool
     exact_clause_api: bool
+    phoneme_trace_api: bool = False
     error: str | None = None
 
 
@@ -75,6 +76,7 @@ def _probe(value: Any) -> EspeakLibraryProbe:
         data=value.data,
         loadable=bool(value.loadable),
         exact_clause_api=bool(value.exact_clause_api),
+        phoneme_trace_api=bool(getattr(value, "phoneme_trace_api", False)),
         error=value.error,
     )
 

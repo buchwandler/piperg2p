@@ -21,3 +21,9 @@ class CaseComparison:
     candidate_symbols: str
     first_difference: int | None = None
     error: str | None = None
+    candidate_raw: str | None = None
+    phonetic_classification: str | None = None
+    segment_relation: str | None = None
+    segment_distance: float | None = None
+    stress_equal: bool | None = None
+    phonodist_error: str | None = None

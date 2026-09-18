@@ -41,5 +41,15 @@ def test_espeakng_runtime_floor() -> None:
         for item in _piperg2p_requirements()
         if _normalized_name(item) == "espeakng-runtime" and item.marker is None
     )
-    assert ">=0.1.3" in str(requirement.specifier)
+    assert ">=0.1.4" in str(requirement.specifier)
     assert "<0.2" in str(requirement.specifier)
+
+
+def test_phonodist_is_not_core_dependency() -> None:
+    core_requirements = [
+        item
+        for item in _piperg2p_requirements()
+        if item.marker is None or "extra" not in str(item.marker)
+    ]
+    names = {_normalized_name(item) for item in core_requirements}
+    assert "phonodist" not in names

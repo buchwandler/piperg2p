@@ -1,13 +1,138 @@
 {
   "metadata": {
-    "source": "espeak-ng",
-    "version": "1.52.0.1 local capture"
+    "command_shape": [
+      "<executable>",
+      "-q",
+      "--ipa=3",
+      "-v",
+      "<voice>",
+      "--stdin"
+    ],
+    "executable": "/etc/profiles/per-user/nahrstaedt/bin/espeak-ng",
+    "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.42",
+    "sha256": "785796c4a4f9167eb264cbe7049cde1fdc15c33fcb440a79287792c7bbffb4f4",
+    "version": "eSpeak NG text-to-speech: 1.52.0.1  Data at: /nix/store/x96g8l6b8wyaqxdwm5868hjv6cl5nv6j-espeak-ng-1.52.0.1-unstable-2025-09-09/share/espeak-ng-data"
   },
   "cases": [
-    { "id": "hello", "raw": "həlˈo‍ʊ" },
-    { "id": "world", "raw": "wˈɜːld" },
-    { "id": "church", "raw": "t‍ʃˈɜːt‍ʃ" },
-    { "id": "cafe", "raw": "kæfˈe‍ɪ" },
-    { "id": "phrase", "raw": "həlˈo‍ʊ wˈɜːld" }
+    {
+      "id": "hello",
+      "raw": "həlˈo‍ʊ"
+    },
+    {
+      "id": "world",
+      "raw": "wˈɜːld"
+    },
+    {
+      "id": "church",
+      "raw": "t‍ʃˈɜːt‍ʃ"
+    },
+    {
+      "id": "cafe",
+      "raw": "kæfˈe‍ɪ"
+    },
+    {
+      "id": "phrase",
+      "raw": "həlˈo‍ʊ wˈɜːld"
+    },
+    {
+      "id": "we-re",
+      "raw": "wˈɪ‍ɹ"
+    },
+    {
+      "id": "i-m",
+      "raw": "ˈa‍ɪm"
+    },
+    {
+      "id": "you-re",
+      "raw": "jˈʊ‍ɹ"
+    },
+    {
+      "id": "they-re",
+      "raw": "ðe‍ɪˈɚ"
+    },
+    {
+      "id": "we-ve",
+      "raw": "wˈiːv"
+    },
+    {
+      "id": "they-ve",
+      "raw": "ðˈe‍ɪv"
+    },
+    {
+      "id": "i-ll",
+      "raw": "ˈa‍ɪl"
+    },
+    {
+      "id": "we-ll",
+      "raw": "wˈiːl"
+    },
+    {
+      "id": "the",
+      "raw": "ðˈə"
+    },
+    {
+      "id": "and",
+      "raw": "ˈænd"
+    },
+    {
+      "id": "to",
+      "raw": "tˈuː"
+    },
+    {
+      "id": "of",
+      "raw": "ˈʌv"
+    },
+    {
+      "id": "for",
+      "raw": "fˈɔː‍ɹ"
+    },
+    {
+      "id": "are",
+      "raw": "ˈɑː‍ɹ"
+    },
+    {
+      "id": "were",
+      "raw": "wˈɜː"
+    },
+    {
+      "id": "was",
+      "raw": "wˈʌz"
+    },
+    {
+      "id": "been",
+      "raw": "bˈɪn"
+    },
+    {
+      "id": "we-re-meeting",
+      "raw": "wɪ‍ɹ mˈiːɾɪŋ"
+    },
+    {
+      "id": "we-re-ready",
+      "raw": "wɪ‍ɹ ɹˈɛdi"
+    },
+    {
+      "id": "we-are-going",
+      "raw": "wiːʲ ɑː‍ɹ ɡˌo‍ʊɪŋ tə ðə stˈɔː‍ɹ"
+    },
+    {
+      "id": "im-going-where",
+      "raw": "a‍ɪm ɡˌo‍ʊɪŋ wˌɛ‍ɹ wɪ‍ɹ mˈiːɾɪŋ"
+    },
+    {
+      "id": "theyve-been",
+      "raw": "ðe‍ɪv bˌɪn ðˈɛ‍ɹ"
+    },
+    {
+      "id": "well-go",
+      "raw": "wiːl ɡˌo‍ʊ tə ðə stˈe‍ɪʃən"
+    },
+    {
+      "id": "the-store",
+      "raw": "ðə stˈɔː‍ɹ"
+    },
+    {
+      "id": "to-the-store",
+      "raw": "tə ðə stˈɔː‍ɹ"
+    }
   ]
 }

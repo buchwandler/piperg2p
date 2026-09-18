@@ -1,0 +1,42 @@
+{
+  "profile": {
+    "name": "espeak-ipa3-parity",
+    "reference": "direct eSpeak --ipa=3",
+    "purpose": "native/CLI stress and weak-form parity"
+  },
+  "cases": [
+    { "id": "we-re", "text": "we're", "suite": "parity" },
+    { "id": "i-m", "text": "I'm", "suite": "parity" },
+    { "id": "you-re", "text": "you're", "suite": "parity" },
+    { "id": "they-re", "text": "they're", "suite": "parity" },
+    { "id": "we-ve", "text": "we've", "suite": "parity" },
+    { "id": "they-ve", "text": "they've", "suite": "parity" },
+    { "id": "i-ll", "text": "I'll", "suite": "parity" },
+    { "id": "we-ll", "text": "we'll", "suite": "parity" },
+    { "id": "the", "text": "the", "suite": "parity" },
+    { "id": "and", "text": "and", "suite": "parity" },
+    { "id": "to", "text": "to", "suite": "parity" },
+    { "id": "of", "text": "of", "suite": "parity" },
+    { "id": "for", "text": "for", "suite": "parity" },
+    { "id": "are", "text": "are", "suite": "parity" },
+    { "id": "were", "text": "were", "suite": "parity" },
+    { "id": "was", "text": "was", "suite": "parity" },
+    { "id": "been", "text": "been", "suite": "parity" },
+    { "id": "we-re-meeting", "text": "we're meeting", "suite": "parity" },
+    { "id": "we-re-ready", "text": "we're ready", "suite": "parity" },
+    {
+      "id": "we-are-going",
+      "text": "we are going to the store",
+      "suite": "parity"
+    },
+    {
+      "id": "im-going-where",
+      "text": "I'm going where we're meeting",
+      "suite": "parity"
+    },
+    { "id": "theyve-been", "text": "they've been there", "suite": "parity" },
+    { "id": "well-go", "text": "we'll go to the station", "suite": "parity" },
+    { "id": "the-store", "text": "the store", "suite": "parity" },
+    { "id": "to-the-store", "text": "to the store", "suite": "parity" }
+  ]
+}

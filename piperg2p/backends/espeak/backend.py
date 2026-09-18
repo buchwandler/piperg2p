@@ -60,6 +60,7 @@ def _diagnostics_from_runtime(
             data=value.data,
             loadable=value.loadable,
             exact_clause_api=value.exact_clause_api,
+            phoneme_trace_api=bool(getattr(value, "phoneme_trace_api", False)),
             error=value.error,
         )
         for value in native_candidates
@@ -73,8 +74,11 @@ def _diagnostics_from_runtime(
         discovery_source=_legacy_source(info.source),
         version=info.version,
         exact_clause_api=info.exact_clause_api,
+        fallback_code=info.fallback_code,
         fallback_reason=info.fallback_reason,
         parity=info.parity,
+        phoneme_output_api=info.phoneme_output_api,
+        phoneme_parity=info.phoneme_parity,
         warnings=warnings,
         native_candidates=candidates,
     )

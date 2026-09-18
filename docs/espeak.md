@@ -2,6 +2,8 @@
 
 `EspeakBackend` supports `auto`, `native`, and `cli` modes. PiperG2P delegates eSpeak discovery, native execution, CLI execution, voice selection, and lifetime management to `espeakng-runtime`. Piper retains its local clause composition and phoneme policy. Native output is labeled `exact` only when the runtime exposes the terminator-capable clause API. CLI output is always labeled `best-effort`.
 
+**Important distinction:** The exact clause API provides exact clause boundaries, but the phoneme semantics in the exact-clause path may differ from CLI for isolated weak words. The `phoneme_parity` diagnostic field reports the runtime's raw phoneme semantic parity, while the `parity` field remains Piper's historical clause/composition compatibility label.
+
 ## Runtime ownership and mode policy
 
 `espeakng-runtime` owns executable, shared-library, and data discovery, optional `espeakng-loader` integration, native ctypes calls, process-global locking, and subprocess invocation. PiperG2P does not duplicate those mechanics.
@@ -46,7 +48,7 @@ for candidate in info.candidates:
     )
 ```
 
-`BackendDiagnostics` maps runtime information to Piper's stable fields, including implementation, parity, exact clause support, fallback reason, selected paths, discovery source, version, and native candidate probes. The runtime source name `espeakng-loader` is exposed as Piper's historical `modern-loader` compatibility name.
+`BackendDiagnostics` maps runtime information to Piper's stable fields, including implementation, parity, exact clause support, fallback reason/code, selected paths, discovery source, version, and native candidate probes. New fields include `phoneme_output_api` (the runtime's phoneme generation mechanism), `phoneme_parity` (the runtime's raw phoneme semantic parity), and `fallback_code` (the runtime's fallback cause identifier). The runtime source name `espeakng-loader` is exposed as Piper's historical `modern-loader` compatibility name.
 
 ## Public compatibility classes
 

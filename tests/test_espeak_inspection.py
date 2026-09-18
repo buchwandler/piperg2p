@@ -13,6 +13,7 @@ def _runtime_probe(
     source: str,
     *,
     exact: bool,
+    phoneme_trace: bool = False,
     error: str | None = None,
 ) -> LibraryProbe:
     return LibraryProbe(
@@ -21,6 +22,7 @@ def _runtime_probe(
         data="data",
         loadable=True,
         exact_clause_api=exact,
+        phoneme_trace_api=phoneme_trace,
         error=error,
     )
 

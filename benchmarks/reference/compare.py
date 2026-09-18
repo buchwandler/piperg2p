@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 
+from .phonodist import compare_phonetically
 from .types import CaseComparison
 
 
@@ -14,7 +15,12 @@ def first_difference(left: str, right: str) -> int | None:
 
 
 def compare_case(
-    case_id: str, reference: str, candidate: str, *, policy: str = "piper-ipa3"
+    case_id: str,
+    reference: str,
+    candidate: str,
+    *,
+    policy: str = "piper-ipa3",
+    use_phonodist: bool = False,
 ) -> CaseComparison:
     if policy == "raw-exact":
         expected, actual = reference, candidate
@@ -27,8 +33,20 @@ def compare_case(
             expected = expected.replace("\u200d", "")
             actual = actual.replace("\u200d", "")
     difference = first_difference(expected, actual)
+
+    phonodist_result = {}
+    if use_phonodist:
+        phonodist_result = compare_phonetically(reference, candidate)
+
     return CaseComparison(
-        case_id, difference is None, reference, expected, actual, difference
+        case_id,
+        difference is None,
+        reference,
+        expected,
+        actual,
+        difference,
+        candidate_raw=candidate,
+        **phonodist_result,
     )
 
 
@@ -53,6 +71,24 @@ def metrics(
         insertions += max(0, len(item.candidate_symbols) - len(item.reference_symbols))
         deletions += max(0, len(item.reference_symbols) - len(item.candidate_symbols))
     total = sum(len(item.reference_symbols) for item in comparisons)
+
+    # Phonodist classification counts
+    phonetic_classifications: dict[str, int] = {}
+    stress_only_mismatches = 0
+    segmental_mismatches = 0
+    notation_only_policy_passes = 0
+    for item in comparisons:
+        if item.phonetic_classification:
+            phonetic_classifications[item.phonetic_classification] = (
+                phonetic_classifications.get(item.phonetic_classification, 0) + 1
+            )
+            if not item.passed and item.phonetic_classification == "stress_only":
+                stress_only_mismatches += 1
+            elif not item.passed and item.phonetic_classification == "segmental":
+                segmental_mismatches += 1
+            elif item.passed and item.phonetic_classification == "notation_only":
+                notation_only_policy_passes += 1
+
     return {
         "cases_total": len(comparisons),
         "cases_passed": passed,
@@ -70,6 +106,10 @@ def metrics(
         "id_exact_matches": sum(left == right for left, right in ids or []),
         "id_mismatches": sum(left != right for left, right in ids or []),
         "missing_symbol_cases": missing_symbol_cases,
+        "phonetic_classifications": phonetic_classifications,
+        "stress_only_mismatches": stress_only_mismatches,
+        "segmental_mismatches": segmental_mismatches,
+        "notation_only_policy_passes": notation_only_policy_passes,
     }
 
 

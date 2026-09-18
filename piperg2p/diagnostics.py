@@ -23,6 +23,12 @@ class EspeakCapabilities:
     def exact_native_available(self) -> bool:
         return self.selected_exact_library is not None
 
+    @property
+    def trace_native_available(self) -> bool:
+        return any(
+            probe.phoneme_trace_api for probe in self.candidates if probe.loadable
+        )
+
 
 @dataclass(frozen=True)
 class BackendDiagnostics:
@@ -34,8 +40,11 @@ class BackendDiagnostics:
     discovery_source: str | None = None
     version: str | None = None
     exact_clause_api: bool = False
+    fallback_code: str | None = None
     fallback_reason: str | None = None
     parity: str = "exact"
+    phoneme_output_api: str | None = None
+    phoneme_parity: str | None = None
     warnings: tuple[str, ...] = ()
     native_candidates: tuple[EspeakLibraryProbe, ...] = ()
 

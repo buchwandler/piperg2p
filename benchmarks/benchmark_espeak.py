@@ -31,7 +31,9 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--quick", action="store_true")
     parser.add_argument(
-        "--suite", choices=("core", "sentences", "compose", "lexicon"), default="core"
+        "--suite",
+        choices=("core", "sentences", "compose", "lexicon", "parity"),
+        default="core",
     )
     parser.add_argument(
         "--reference-source", choices=("live", "golden"), default="live"
@@ -56,6 +58,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--sample-limit", type=int, default=10)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--fail-on", choices=("regression",), default=None)
+    parser.add_argument(
+        "--phonodist",
+        choices=("off", "auto", "required"),
+        default="off",
+        help="Phonodist classification mode: off=disabled, auto=if installed, required=fail if missing",
+    )
     return parser
 
 
@@ -66,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
         "sentences": "espeak_sentences.json",
         "compose": "piper_compose.json",
         "lexicon": "espeak_core.json",
+        "parity": "espeak_parity.json",
     }[args.suite]
     corpus_path = args.corpus or Path(__file__).parent / "data" / default_corpus
     corpus = load_corpus(corpus_path)
@@ -127,6 +136,25 @@ def main(argv: list[str] | None = None) -> int:
     comparison_values = []
     candidate_errors: list[str] = []
     candidate_infrastructure_errors: list[str] = []
+
+    # Check Phonodist availability
+    use_phonodist = False
+    if args.phonodist != "off":
+        try:
+            import importlib
+
+            importlib.import_module("phonodist")
+            use_phonodist = True
+        except ImportError:
+            if args.phonodist == "required":
+                report.update(
+                    {
+                        "status": "infrastructure-error",
+                        "reference_errors": ["phonodist is required but not installed"],
+                    }
+                )
+                return _finish(report, args)
+    candidate_infrastructure_errors: list[str] = []
     for case in cases:
         try:
             candidate, diagnostics = run_candidate(
@@ -140,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
                 reference_outputs[case["id"]].raw,
                 candidate,
                 policy=args.policy,
+                use_phonodist=use_phonodist,
             )
             item = comparison_dict(result)
             item["input"] = case["text"]
@@ -165,6 +194,7 @@ def main(argv: list[str] | None = None) -> int:
                     reference_outputs[case["id"]].raw,
                     "",
                     policy=args.policy,
+                    use_phonodist=use_phonodist,
                 )
             )
     report["metrics"] = metrics(

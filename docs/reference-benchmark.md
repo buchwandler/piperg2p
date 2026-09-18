@@ -28,12 +28,20 @@ The command records Piper commit and version, Python and platform information, d
 
 ## eSpeak IPA3 primary benchmark
 
-`eSpeak --ipa=3` is the pronunciation gold standard. The direct benchmark has separate core, sentence, composition, and lexicon-overlay suites and reports exact matches plus symbol substitutions, insertions, deletions, edit distance, and error rate.
+`eSpeak --ipa=3` is the pronunciation gold standard. The direct benchmark has separate core, sentence, composition, lexicon-overlay, and parity suites and reports exact matches plus symbol substitutions, insertions, deletions, edit distance, and error rate.
+
+The parity suite (`--suite parity`) covers weak words, contractions, and phrase-context contrasts to detect stress and pronunciation differences between native and CLI modes. When Phonodist is available (`--phonodist auto` or `--phonodist required`), the benchmark also reports phonetic classification counts (exact, notation_only, stress_only, segmental) to explain structural differences.
 
 Quick live check:
 
 ```bash
 python benchmarks/benchmark_espeak.py --quick --suite core --candidate auto --format summary
+```
+
+Parity suite with Phonodist diagnostics:
+
+```bash
+python benchmarks/benchmark_espeak.py --suite parity --candidate auto --reference-source golden --golden benchmarks/goldens/espeak_ipa3_en-us.json --policy piper-ipa3 --phonodist auto --format summary
 ```
 
 Use `--reference-source live` for the installed executable or `--reference-source golden --golden PATH` for a committed capture. Golden refresh requires `--write-reference-golden --overwrite` and is never implicit. The pinned `benchmark_reference.py` remains secondary evidence for Piper-specific composition and historical compatibility, not the pronunciation oracle.

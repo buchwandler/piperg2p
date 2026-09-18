@@ -27,6 +27,8 @@ def _info(mode: str, *, exact: bool):
         fallback_reason=None,
         fallback_code=None,
         parity="exact" if exact else "best-effort",
+        phoneme_output_api="native-trace" if mode == "native" else "cli",
+        phoneme_parity="exact" if exact else "best-effort",
     )
 
 

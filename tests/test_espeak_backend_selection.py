@@ -23,6 +23,8 @@ def _info(*, mode: str, implementation: str, fallback_reason: str | None = None)
         fallback_reason=fallback_reason,
         fallback_code="exact-clause-api-unavailable" if fallback_reason else None,
         parity="exact" if implementation == "native" else "best-effort",
+        phoneme_output_api="native-trace" if implementation == "native" else "cli",
+        phoneme_parity="exact" if implementation == "native" else "best-effort",
     )
 
 
@@ -189,6 +191,8 @@ def test_diagnostics_map_runtime_info_and_native_candidates():
         fallback_reason=None,
         fallback_code=None,
         parity="exact",
+        phoneme_output_api="native-trace",
+        phoneme_parity="exact",
     )
     probe = types.SimpleNamespace(
         library="candidate",
@@ -196,6 +200,7 @@ def test_diagnostics_map_runtime_info_and_native_candidates():
         data="candidate-data",
         loadable=True,
         exact_clause_api=True,
+        phoneme_trace_api=True,
         error=None,
     )
     FakeRuntime.native_probes_value = (probe,)
@@ -212,6 +217,10 @@ def test_diagnostics_map_runtime_info_and_native_candidates():
     assert diagnostics.version == "version"
     assert diagnostics.exact_clause_api
     assert diagnostics.fallback_reason is None
+    assert diagnostics.fallback_code is None
     assert diagnostics.parity == "exact"
+    assert diagnostics.phoneme_output_api == "native-trace"
+    assert diagnostics.phoneme_parity == "exact"
     assert diagnostics.native_candidates[0].source == "modern-loader"
+    assert diagnostics.native_candidates[0].phoneme_trace_api is True
     backend.close()

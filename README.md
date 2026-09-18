@@ -87,6 +87,20 @@ Compatibility is measured against pinned reference profiles, not a moving upstre
 
 The runtime package has no Piper dependency, does not import Piper, and does not bundle Piper GPL assets. Reference corpus metadata is development evidence only.
 
+## Diagnostics
+
+PiperG2P exposes detailed diagnostics for eSpeak backends through `BackendDiagnostics`. Key fields include:
+
+- `implementation`: The backend implementation type (`native`, `cli`, `text`)
+- `parity`: Piper's historical clause/composition compatibility label (`exact`, `best-effort`)
+- `exact_clause_api`: Whether the runtime exposes the terminator-capable clause API
+- `phoneme_output_api`: The runtime's phoneme generation mechanism (`native-trace`, `cli`)
+- `phoneme_parity`: The runtime's raw phoneme semantic parity (`exact`, `best-effort`)
+- `fallback_code`: The runtime's fallback cause identifier
+- `fallback_reason`: Human-readable fallback reason
+
+**Important:** The exact clause API provides exact clause boundaries, but the phoneme semantics in the exact-clause path may differ from CLI for isolated weak words. The `phoneme_parity` field reports the runtime's raw phoneme semantic parity, while the `parity` field remains Piper's historical clause/composition compatibility label.
+
 ## Sibling-style API
 
 The high-level API keeps Piper voice configuration explicit while matching the shared development vocabulary used by sibling frontends:
@@ -94,9 +108,7 @@ The high-level API keeps Piper voice configuration explicit while matching the s
 ```python
 from piperg2p import phonemize_prepared
 
-result = phonemize_prepared(
-    "Hello world", language="en-us", config="voice.onnx.json"
-)
+result = phonemize_prepared("Hello world", language="en-us", config="voice.onnx.json")
 print(result.phonemes)
 print(result.token_ids)
 ```
