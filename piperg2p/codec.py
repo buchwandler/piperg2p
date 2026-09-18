@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import warnings
+from ._warnings import warn_external
 from collections.abc import Mapping, Sequence
 from enum import Enum
 from pathlib import Path
@@ -49,7 +49,7 @@ def _missing(
     if policy is MissingPhonemePolicy.ERROR:
         raise MissingPhonemeError(message)
     if policy is MissingPhonemePolicy.WARN:
-        warnings.warn(message, MissingPhonemeWarning, stacklevel=3)
+        warn_external(message, MissingPhonemeWarning)
         messages.append(message)
 
 
