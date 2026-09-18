@@ -1,6 +1,7 @@
 import pytest
 
 from piperg2p import (
+    CompatibilityWarning,
     ConfigError,
     PhonemeType,
     PiperConfig,
@@ -50,7 +51,8 @@ def test_strict_config_requires_core_fields():
 
 
 def test_lenient_config_infers_legacy_defaults():
-    config = VoiceConfig.from_dict({"phoneme_id_map": {"_": 0}}, strict=False)
+    with pytest.warns(CompatibilityWarning, match="inferred num_symbols"):
+        config = VoiceConfig.from_dict({"phoneme_id_map": {"_": 0}}, strict=False)
     assert config.num_symbols == 1
     assert config.sample_rate == 22050
 

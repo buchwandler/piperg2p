@@ -61,3 +61,23 @@ pip install 'piperg2p[espeak-direct]'  # packaged modern eSpeak loader
 ```
 
 These packages are not imported or required for core/text/eSpeak-only use.
+
+### Termux / Android
+
+On Termux, install the native package:
+
+```bash
+pkg install espeak
+python -m pip install piperg2p
+```
+
+Do not use `piperg2p[espeak-direct]` merely to obtain eSpeak on Termux.
+The bundled `espeakng-loader` backend targets supported desktop/server
+platforms; Termux should use its system eSpeak installation.
+
+Current Termux packages eSpeak NG 1.52.0. That version does not expose
+`espeak_TextToPhonemesWithTerminator`, so Piper exact native clause
+parity is not available from the system library. `mode="auto"` therefore
+uses the CLI best-effort fallback. Once Termux ships an eSpeak NG build
+that exposes the terminator API, capability discovery will select it
+without a `piperg2p` version-specific change.
