@@ -16,7 +16,7 @@ license = {text = "Apache-2.0"}
 authors = [{name = "piperg2p contributors"}]
 keywords = ["tts", "piper", "g2p", "phonemizer", "onnx", "espeak"]
 dependencies = [
-  "espeakng-runtime>=0.1.4,<0.2",
+  "espeakng-runtime>=0.1.5,<0.2",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -42,7 +42,7 @@ dev = [
 g2lex = ["g2lex>=0.1.8,<0.2"]
 lexphon = ["lexphon>=0.2.4,<0.3"]
 espeak-direct = [
-  "espeakng-runtime[bundled]>=0.1.4,<0.2",
+  "espeakng-runtime[bundled]>=0.1.5,<0.2",
 ]
 lexicons = ["lexphon>=0.2.4,<0.3"]
 reference = [

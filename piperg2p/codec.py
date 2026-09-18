@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from ._warnings import warn_external
 from collections.abc import Mapping, Sequence
 from enum import Enum
 from pathlib import Path
 from typing import Protocol
 
+from ._warnings import warn_external
 from .config import VoiceConfig
 from .errors import ConfigError, MissingPhonemeError, MissingPhonemeWarning
 from .types import EncodeResult

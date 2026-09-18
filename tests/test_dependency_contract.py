@@ -41,7 +41,20 @@ def test_espeakng_runtime_floor() -> None:
         for item in _piperg2p_requirements()
         if _normalized_name(item) == "espeakng-runtime" and item.marker is None
     )
-    assert ">=0.1.4" in str(requirement.specifier)
+    assert ">=0.1.5" in str(requirement.specifier)
+    assert "<0.2" in str(requirement.specifier)
+
+
+def test_espeakng_runtime_direct_extra_floor() -> None:
+    requirement = next(
+        item
+        for item in _piperg2p_requirements()
+        if _normalized_name(item) == "espeakng-runtime"
+        and "bundled" in str(item.extras)
+        and item.marker is not None
+        and "espeak-direct" in str(item.marker)
+    )
+    assert ">=0.1.5" in str(requirement.specifier)
     assert "<0.2" in str(requirement.specifier)
 
 

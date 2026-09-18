@@ -96,3 +96,32 @@ def test_native_compatibility_wrapper_converts_runtime_clauses(monkeypatch):
     assert provider.clauses("Hello.", "en-us") == [Clause("hɛlə", ".", True)]
     assert provider._runtime.calls == [("clauses", ("Hello.", "en-us", True))]
     provider.close()
+
+
+def test_cli_splitter_preserves_leading_paragraph_breaks():
+    from piperg2p.backends.espeak.clauses import split_cli_clauses
+
+    parts = split_cli_clauses('\n\n"But wait..." she asked, "are you sure?"')
+
+    assert parts[0] == ('\n\n"But wait', ".", True)
+
+
+def test_cli_compatibility_wrapper_accepts_multiline_clause_body(monkeypatch):
+    monkeypatch.setattr(cli_module, "EspeakRuntime", FakeRuntime)
+    backend = EspeakCliBackend(executable="espeak-ng")
+
+    result = backend.phonemize(
+        '\n\n"But wait..." she asked, "are you sure?"',
+        voice="en-us",
+    )
+
+    assert result
+    batch_calls = [
+        call for call in backend._runtime.calls if call[0] == "phonemize_many"
+    ]
+    assert batch_calls
+    texts, selected_voice = batch_calls[0][1]
+    assert selected_voice == "en-us"
+    assert texts[0].startswith("\n\n")
+
+    backend.close()

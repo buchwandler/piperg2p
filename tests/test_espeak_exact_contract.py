@@ -14,6 +14,7 @@ from espeakng_runtime.errors import (
 from espeakng_runtime.errors import PhonemizationError as RuntimePhonemizationError
 
 from piperg2p import (
+    BackendFallbackWarning,
     BackendUnavailableError,
     EspeakBackend,
     PhonemizationError,
@@ -156,4 +157,51 @@ def test_runtime_capability_and_conflict_errors_map_to_backend_unavailable():
 def test_empty_text_is_preserved():
     backend = EspeakBackend(mode="cli")
     assert backend.phonemize("", voice="en-us") == []
+    backend.close()
+
+
+def test_cli_policy_preserves_multiline_clause_body_for_runtime_batch():
+    Runtime.info_value = _info(mode="cli", exact=False)
+    backend = EspeakBackend(mode="cli")
+
+    source = '\n\n"But wait..." she asked, "are you sure?"'
+    result = backend.phonemize(source, voice="en-us")
+
+    assert result
+
+    batch_calls = [
+        call for call in backend._runtime.calls if call[0] == "phonemize_many"
+    ]
+    assert batch_calls
+
+    texts, selected_voice = batch_calls[0][1]
+    assert selected_voice == "en-us"
+    assert texts[0] == '\n\n"But wait'
+
+    backend.close()
+
+
+def test_auto_cli_fallback_accepts_multiline_source():
+    Runtime.info_value = _info(mode="auto", exact=False)
+    Runtime.info_value.implementation = "cli"
+    Runtime.info_value.fallback_reason = "no exact clause API"
+
+    with pytest.warns(BackendFallbackWarning):
+        backend = EspeakBackend(mode="auto")
+
+    result = backend.phonemize(
+        '\n\n"But wait..." she asked, "are you sure?"',
+        voice="en-us",
+    )
+
+    assert result
+
+    batch_calls = [
+        call for call in backend._runtime.calls if call[0] == "phonemize_many"
+    ]
+    assert batch_calls
+    texts, selected_voice = batch_calls[0][1]
+    assert selected_voice == "en-us"
+    assert texts[0].startswith("\n\n")
+
     backend.close()
