@@ -1,0 +1,42 @@
+rows:
+  - sha: a1081f1def1d7d6228471bb726b1cb5bfbb74da1
+    inspected: true
+    inspected_paths:
+      - docs/installation.md
+      - tests/test_config.py
+      - tests/test_real_optional_integration.py
+    observed_behavior: "Documented Termux system eSpeak installation and made optional integration tests assert compatibility warnings explicitly"
+    public_impact: docs
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: ""
+    stale: false
+  - sha: b7708bf6d126f85ff168c9635148588c86c2c49a
+    inspected: true
+    inspected_paths:
+      - piperg2p/codec.py
+    observed_behavior: "Codec missing-phoneme warnings now use the external-callsite warning helper"
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: ""
+    stale: false
+  - sha: 33ba13d5f1b849f6492c96f6d8b014d2451ffab3
+    inspected: true
+    inspected_paths:
+      - docs/espeak.md
+      - piperg2p/codec.py
+      - pyproject.toml
+      - tests/test_clause_backend.py
+      - tests/test_dependency_contract.py
+      - tests/test_espeak_exact_contract.py
+      - tests/test_real_optional_integration.py
+    observed_behavior: "Preserved multiline CLI clause bodies for runtime batching and raised the espeakng-runtime minimum to 0.1.5"
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: ""
+    stale: false

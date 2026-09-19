@@ -1,0 +1,55 @@
+{
+  "candidate_count": 3,
+  "candidates": [
+    {
+      "additions": 46,
+      "deletions": 13,
+      "patch_file": "a1081f1.patch",
+      "patch_sha256": "7067a0ac48072a031fd90d119fe7522cd8f14ef4726acf176fd18d62ba1ac2f1",
+      "paths": [
+        "docs/installation.md",
+        "tests/test_config.py",
+        "tests/test_real_optional_integration.py"
+      ],
+      "sha": "a1081f1def1d7d6228471bb726b1cb5bfbb74da1",
+      "short_sha": "a1081f1",
+      "source_ref": "git:a1081f1def1d7d6228471bb726b1cb5bfbb74da1"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_file": "b7708bf.patch",
+      "patch_sha256": "ea3a91a5586869432ac18171f1ab00607fd0dcf5cf42193fe6ca7fdf96cc5ce6",
+      "paths": ["piperg2p/codec.py"],
+      "sha": "b7708bf6d126f85ff168c9635148588c86c2c49a",
+      "short_sha": "b7708bf",
+      "source_ref": "git:b7708bf6d126f85ff168c9635148588c86c2c49a"
+    },
+    {
+      "additions": 97,
+      "deletions": 4,
+      "patch_file": "33ba13d.patch",
+      "patch_sha256": "e20fb7cb54b13f16580316df7cdd9199edab401c2684c5fedb009c87844aa837",
+      "paths": [
+        "docs/espeak.md",
+        "piperg2p/codec.py",
+        "pyproject.toml",
+        "tests/test_clause_backend.py",
+        "tests/test_dependency_contract.py",
+        "tests/test_espeak_exact_contract.py",
+        "tests/test_real_optional_integration.py"
+      ],
+      "sha": "33ba13d5f1b849f6492c96f6d8b014d2451ffab3",
+      "short_sha": "33ba13d",
+      "source_ref": "git:33ba13d5f1b849f6492c96f6d8b014d2451ffab3"
+    }
+  ],
+  "git_base_ref": "7589873ec055868f19a253c8730b49ea023f0a1f",
+  "git_base_sha": "7589873ec055868f19a253c8730b49ea023f0a1f",
+  "git_head_ref": "33ba13d5f1b849f6492c96f6d8b014d2451ffab3",
+  "git_head_sha": "33ba13d5f1b849f6492c96f6d8b014d2451ffab3",
+  "include_merges": "nontrivial",
+  "object_type": "git_evidence_manifest",
+  "release_version": "v0.1.5",
+  "schema_version": 1
+}

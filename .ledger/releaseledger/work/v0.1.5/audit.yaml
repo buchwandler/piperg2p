@@ -1,0 +1,69 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 1
+release_version: v0.1.5
+git_base_ref: v0.1.4
+git_base_sha: 7589873ec055868f19a253c8730b49ea023f0a1f
+git_head_ref: HEAD
+git_head_sha: 33ba13d5f1b849f6492c96f6d8b014d2451ffab3
+git_range: 7589873ec055868f19a253c8730b49ea023f0a1f..33ba13d5f1b849f6492c96f6d8b014d2451ffab3
+commit_count: 3
+rows:
+  - sha: a1081f1def1d7d6228471bb726b1cb5bfbb74da1
+    source_ref: git:a1081f1def1d7d6228471bb726b1cb5bfbb74da1
+    short_sha: a1081f1
+    changed_paths:
+      - docs/installation.md
+      - tests/test_config.py
+      - tests/test_real_optional_integration.py
+    stats:
+      files_changed: 3
+      insertions: 46
+      deletions: 13
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "fix: pytest fix for termux"
+  - sha: b7708bf6d126f85ff168c9635148588c86c2c49a
+    source_ref: git:b7708bf6d126f85ff168c9635148588c86c2c49a
+    short_sha: b7708bf
+    changed_paths:
+      - piperg2p/codec.py
+    stats:
+      files_changed: 1
+      insertions: 2
+      deletions: 2
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "fix: warning"
+  - sha: 33ba13d5f1b849f6492c96f6d8b014d2451ffab3
+    source_ref: git:33ba13d5f1b849f6492c96f6d8b014d2451ffab3
+    short_sha: 33ba13d
+    changed_paths:
+      - docs/espeak.md
+      - piperg2p/codec.py
+      - pyproject.toml
+      - tests/test_clause_backend.py
+      - tests/test_dependency_contract.py
+      - tests/test_espeak_exact_contract.py
+      - tests/test_real_optional_integration.py
+    stats:
+      files_changed: 7
+      insertions: 97
+      deletions: 4
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: raise dep min version to prevent bug"

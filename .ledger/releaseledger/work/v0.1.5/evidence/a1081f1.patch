@@ -1,0 +1,115 @@
+ docs/installation.md                    | 20 +++++++++++++++++++
+ tests/test_config.py                    |  4 +++-
+ tests/test_real_optional_integration.py | 35 ++++++++++++++++++++++-----------
+ 3 files changed, 46 insertions(+), 13 deletions(-)
+
+diff --git a/docs/installation.md b/docs/installation.md
+index 29c166b..41d68e2 100644
+--- a/docs/installation.md
++++ b/docs/installation.md
+@@ -61,3 +61,23 @@ pip install 'piperg2p[espeak-direct]'  # packaged modern eSpeak loader
+ ```
+
+ These packages are not imported or required for core/text/eSpeak-only use.
++
++### Termux / Android
++
++On Termux, install the native package:
++
++```bash
++pkg install espeak
++python -m pip install piperg2p
++```
++
++Do not use `piperg2p[espeak-direct]` merely to obtain eSpeak on Termux.
++The bundled `espeakng-loader` backend targets supported desktop/server
++platforms; Termux should use its system eSpeak installation.
++
++Current Termux packages eSpeak NG 1.52.0. That version does not expose
++`espeak_TextToPhonemesWithTerminator`, so Piper exact native clause
++parity is not available from the system library. `mode="auto"` therefore
++uses the CLI best-effort fallback. Once Termux ships an eSpeak NG build
++that exposes the terminator API, capability discovery will select it
++without a `piperg2p` version-specific change.
+diff --git a/tests/test_config.py b/tests/test_config.py
+index 613d728..199844c 100644
+--- a/tests/test_config.py
++++ b/tests/test_config.py
+@@ -1,6 +1,7 @@
+ import pytest
+
+ from piperg2p import (
++    CompatibilityWarning,
+     ConfigError,
+     PhonemeType,
+     PiperConfig,
+@@ -50,7 +51,8 @@ def test_strict_config_requires_core_fields():
+
+
+ def test_lenient_config_infers_legacy_defaults():
+-    config = VoiceConfig.from_dict({"phoneme_id_map": {"_": 0}}, strict=False)
++    with pytest.warns(CompatibilityWarning, match="inferred num_symbols"):
++        config = VoiceConfig.from_dict({"phoneme_id_map": {"_": 0}}, strict=False)
+     assert config.num_symbols == 1
+     assert config.sample_rate == 22050
+
+diff --git a/tests/test_real_optional_integration.py b/tests/test_real_optional_integration.py
+index d84e618..3bd82cc 100644
+--- a/tests/test_real_optional_integration.py
++++ b/tests/test_real_optional_integration.py
+@@ -1,10 +1,15 @@
+ from __future__ import annotations
+
+ import json
+-
++import warnings
+ import pytest
+
+-from piperg2p import BackendUnavailableError, EspeakBackend, NativeEspeakProvider
++from piperg2p import (
++    BackendFallbackWarning,
++    BackendUnavailableError,
++    EspeakBackend,
++    NativeEspeakProvider,
++)
+ from piperg2p.lexicons import G2LexLookup
+
+
+@@ -23,21 +28,27 @@ def test_exact_native_epeak_clause_contract_if_provisioned():
+
+
+ def test_auto_backend_reports_exact_or_cli_fallback():
+-    try:
+-        backend = EspeakBackend(mode="auto")
+-    except BackendUnavailableError:
+-        pytest.skip("eSpeak native library and CLI are unavailable")
++    with warnings.catch_warnings(record=True) as caught:
++        warnings.simplefilter("always", BackendFallbackWarning)
++        try:
++            backend = EspeakBackend(mode="auto")
++        except BackendUnavailableError:
++            pytest.skip("eSpeak native library and CLI are unavailable")
++
++    fallback_warnings = [
++        item for item in caught if issubclass(item.category, BackendFallbackWarning)
++    ]
++
+     try:
+         if backend.diagnostics.parity == "exact":
+             assert backend.diagnostics.exact_clause_api
++            assert fallback_warnings == []
+         else:
+             assert backend.diagnostics.implementation == "cli"
+-            assert (
+-                backend.diagnostics.fallback_reason
+-                in {
+-                    "terminator API unavailable",
+-                }
+-                or backend.diagnostics.fallback_reason
++            assert backend.diagnostics.fallback_reason
++            assert len(fallback_warnings) == 1
++            assert "exact Piper eSpeak clause API unavailable" in str(
++                fallback_warnings[0].message
+             )
+     finally:
+         backend.close()
