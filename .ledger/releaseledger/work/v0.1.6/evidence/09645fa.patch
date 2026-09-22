@@ -14,7 +14,7 @@ index c694a7d..3574ef2 100644
 +            value.get("morph"),
          )
      raise TypeError("annotation must be TokenAnnotation or mapping")
- 
+
 @@ -157,6 +158,8 @@ def _update_token_metadata(
                      token.meta["tag"] = annotation.tag
                  if annotation.lemma is not None:
@@ -33,7 +33,7 @@ index 5d8b482..b5637bd 100644
      lemma: str | None = None
      language: str | None = None
 +    morph: str | None = None
- 
+
      @property
      def char_start(self) -> int:
 diff --git a/tests/test_annotations.py b/tests/test_annotations.py

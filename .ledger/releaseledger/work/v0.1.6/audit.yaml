@@ -11,21 +11,21 @@ git_head_sha: 09645fa455fbab501eca748a41255f8cea988413
 git_range: 4131a70cf94850bd626e2b88dc2beed904af71c4..09645fa455fbab501eca748a41255f8cea988413
 commit_count: 1
 rows:
-- sha: 09645fa455fbab501eca748a41255f8cea988413
-  source_ref: git:09645fa455fbab501eca748a41255f8cea988413
-  short_sha: 09645fa
-  changed_paths:
-  - piperg2p/spans.py
-  - piperg2p/types.py
-  - tests/test_annotations.py
-  stats:
-    files_changed: 3
-    insertions: 38
-    deletions: 2
-  inspected: false
-  inspected_paths: []
-  observed_behavior: ''
-  public_impact: unknown
-  decision: needs_review
-  stale: false
-  evidence_subject: 'feat: add morph as input'
+  - sha: 09645fa455fbab501eca748a41255f8cea988413
+    source_ref: git:09645fa455fbab501eca748a41255f8cea988413
+    short_sha: 09645fa
+    changed_paths:
+      - piperg2p/spans.py
+      - piperg2p/types.py
+      - tests/test_annotations.py
+    stats:
+      files_changed: 3
+      insertions: 38
+      deletions: 2
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: add morph as input"
