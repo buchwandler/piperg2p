@@ -59,6 +59,7 @@ class TokenAnnotation:
     tag: str | None = None
     lemma: str | None = None
     language: str | None = None
+    morph: str | None = None
 
     @property
     def char_start(self) -> int:

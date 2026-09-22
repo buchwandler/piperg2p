@@ -54,6 +54,7 @@ def _as_annotation(value: TokenAnnotationLike) -> TokenAnnotation:
             value.get("tag"),
             value.get("lemma"),
             value.get("language"),
+            value.get("morph"),
         )
     raise TypeError("annotation must be TokenAnnotation or mapping")
 
@@ -157,6 +158,8 @@ def _update_token_metadata(
                     token.meta["tag"] = annotation.tag
                 if annotation.lemma is not None:
                     token.meta["lemma"] = annotation.lemma
+                if annotation.morph is not None:
+                    token.meta["morph"] = annotation.morph
                 if annotation.language is not None:
                     token.lang = annotation.language
     for override in overrides:
