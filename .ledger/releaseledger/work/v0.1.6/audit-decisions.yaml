@@ -1,0 +1,14 @@
+rows:
+- sha: 09645fa455fbab501eca748a41255f8cea988413
+  inspected: true
+  inspected_paths:
+  - piperg2p/spans.py
+  - piperg2p/types.py
+  - tests/test_annotations.py
+  observed_behavior: Token annotations now accept morphological metadata and preserve it in token metadata for both dataclass and mapping inputs.
+  public_impact: public
+  decision: accepted
+  target_entry_key: null
+  target_entry_id: null
+  notes: ''
+  stale: false

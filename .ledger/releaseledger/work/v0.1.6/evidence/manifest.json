@@ -1,0 +1,27 @@
+{
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "additions": 38,
+      "deletions": 2,
+      "patch_file": "09645fa.patch",
+      "patch_sha256": "e8af78bb996b3051ccdc4493316a072e7da7cfd75e03f4d81b285efe24b8ed76",
+      "paths": [
+        "piperg2p/spans.py",
+        "piperg2p/types.py",
+        "tests/test_annotations.py"
+      ],
+      "sha": "09645fa455fbab501eca748a41255f8cea988413",
+      "short_sha": "09645fa",
+      "source_ref": "git:09645fa455fbab501eca748a41255f8cea988413"
+    }
+  ],
+  "git_base_ref": "4131a70cf94850bd626e2b88dc2beed904af71c4",
+  "git_base_sha": "4131a70cf94850bd626e2b88dc2beed904af71c4",
+  "git_head_ref": "09645fa455fbab501eca748a41255f8cea988413",
+  "git_head_sha": "09645fa455fbab501eca748a41255f8cea988413",
+  "include_merges": "nontrivial",
+  "object_type": "git_evidence_manifest",
+  "release_version": "v0.1.6",
+  "schema_version": 1
+}
