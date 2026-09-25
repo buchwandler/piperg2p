@@ -1,0 +1,48 @@
+{
+  "candidate_count": 2,
+  "candidates": [
+    {
+      "additions": 84,
+      "deletions": 81,
+      "patch_file": "175ca5b.patch",
+      "patch_sha256": "a806beca478e44b220e89b09849c2318ded46794c31e5a1297afb240cc47acfd",
+      "paths": [
+        ".ledger/releaseledger/data/ledgers/main/releases/v0.1.6/audit/commit-audit.yaml",
+        ".ledger/releaseledger/data/ledgers/main/releases/v0.1.6/entries/entry-0001.md",
+        ".ledger/releaseledger/work/v0.1.6/audit-decisions.yaml",
+        ".ledger/releaseledger/work/v0.1.6/audit.yaml",
+        ".ledger/releaseledger/work/v0.1.6/entries.yaml",
+        ".ledger/releaseledger/work/v0.1.6/evidence/09645fa.patch",
+        "docs/changelog.md"
+      ],
+      "sha": "175ca5b3db36dcf0adbd14e75b4489a28cada95f",
+      "short_sha": "175ca5b",
+      "source_ref": "git:175ca5b3db36dcf0adbd14e75b4489a28cada95f"
+    },
+    {
+      "additions": 155,
+      "deletions": 26,
+      "patch_file": "82cf900.patch",
+      "patch_sha256": "5f38ff5a4c9de238b291acedd77cbd862226382ce440218028d5fc4563a89f59",
+      "paths": [
+        "docs/espeak.md",
+        "piperg2p/backends/espeak/clauses.py",
+        "pyproject.toml",
+        "tests/test_clause_backend.py",
+        "tests/test_dependency_contract.py",
+        "tests/test_espeak_exact_contract.py"
+      ],
+      "sha": "82cf9008469efe3418f752d94ab74d2629110e19",
+      "short_sha": "82cf900",
+      "source_ref": "git:82cf9008469efe3418f752d94ab74d2629110e19"
+    }
+  ],
+  "git_base_ref": "1180cd09630f5b5a806f1a07a8c33249d96ef22d",
+  "git_base_sha": "1180cd09630f5b5a806f1a07a8c33249d96ef22d",
+  "git_head_ref": "82cf9008469efe3418f752d94ab74d2629110e19",
+  "git_head_sha": "82cf9008469efe3418f752d94ab74d2629110e19",
+  "include_merges": "nontrivial",
+  "object_type": "git_evidence_manifest",
+  "release_version": "v0.1.7",
+  "schema_version": 1
+}

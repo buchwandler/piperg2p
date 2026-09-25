@@ -1,0 +1,49 @@
+schema: releaseledger.entry-batch.v1
+operation: create
+schema_version: 1
+object_type: release_entry_batch
+release_version: v0.1.7
+git_base_ref: 1180cd09630f5b5a806f1a07a8c33249d96ef22d
+git_base_sha: 1180cd09630f5b5a806f1a07a8c33249d96ef22d
+git_head_ref: 82cf9008469efe3418f752d94ab74d2629110e19
+git_head_sha: 82cf9008469efe3418f752d94ab74d2629110e19
+include_merges: nontrivial
+entries:
+  - kind: internal
+    summary: "Changed generated ReleaseLedger audit metadata and changelog formatting only"
+    status: accepted
+    internal: true
+    source_refs:
+      - git:175ca5b3db36dcf0adbd14e75b4489a28cada95f
+    paths:
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.6/audit/commit-audit.yaml
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.6/entries/entry-0001.md
+      - .ledger/releaseledger/work/v0.1.6/audit-decisions.yaml
+      - .ledger/releaseledger/work/v0.1.6/audit.yaml
+      - .ledger/releaseledger/work/v0.1.6/entries.yaml
+      - .ledger/releaseledger/work/v0.1.6/evidence/09645fa.patch
+      - docs/changelog.md
+    sources:
+      - git:175ca5b3db36dcf0adbd14e75b4489a28cada95f
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"
+  - kind: changed
+    summary: "Improved CLI sentence splitting with Phrasplit while preserving punctuation and language-specific grouping"
+    status: accepted
+    source_refs:
+      - git:82cf9008469efe3418f752d94ab74d2629110e19
+    paths:
+      - docs/espeak.md
+      - piperg2p/backends/espeak/clauses.py
+      - pyproject.toml
+      - tests/test_clause_backend.py
+      - tests/test_dependency_contract.py
+      - tests/test_espeak_exact_contract.py
+    sources:
+      - git:82cf9008469efe3418f752d94ab74d2629110e19
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"

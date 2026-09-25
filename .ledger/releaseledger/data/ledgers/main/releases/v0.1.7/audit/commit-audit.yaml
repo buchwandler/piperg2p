@@ -1,0 +1,77 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 3
+release_version: v0.1.7
+git_base_ref: v0.1.6
+git_base_sha: 1180cd09630f5b5a806f1a07a8c33249d96ef22d
+git_head_ref: HEAD
+git_head_sha: 82cf9008469efe3418f752d94ab74d2629110e19
+git_range: 1180cd09630f5b5a806f1a07a8c33249d96ef22d..82cf9008469efe3418f752d94ab74d2629110e19
+commit_count: 2
+rows:
+  - sha: 175ca5b3db36dcf0adbd14e75b4489a28cada95f
+    source_ref: git:175ca5b3db36dcf0adbd14e75b4489a28cada95f
+    short_sha: 175ca5b
+    changed_paths:
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.6/audit/commit-audit.yaml
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.6/entries/entry-0001.md
+      - .ledger/releaseledger/work/v0.1.6/audit-decisions.yaml
+      - .ledger/releaseledger/work/v0.1.6/audit.yaml
+      - .ledger/releaseledger/work/v0.1.6/entries.yaml
+      - .ledger/releaseledger/work/v0.1.6/evidence/09645fa.patch
+      - docs/changelog.md
+    stats:
+      files_changed: 7
+      insertions: 84
+      deletions: 81
+    inspected: true
+    inspected_paths:
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.6/audit/commit-audit.yaml
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.6/entries/entry-0001.md
+      - .ledger/releaseledger/work/v0.1.6/audit-decisions.yaml
+      - .ledger/releaseledger/work/v0.1.6/audit.yaml
+      - .ledger/releaseledger/work/v0.1.6/entries.yaml
+      - .ledger/releaseledger/work/v0.1.6/evidence/09645fa.patch
+      - docs/changelog.md
+    observed_behavior:
+      Reformatted checked-in ReleaseLedger YAML and generated changelog
+      whitespace; no package or API behavior changed.
+    public_impact: internal
+    decision: internal
+    stale: false
+    evidence_subject: "chore: pre-commit"
+    target_entry_id: entry-0001
+    notes: Repository bookkeeping only.
+  - sha: 82cf9008469efe3418f752d94ab74d2629110e19
+    source_ref: git:82cf9008469efe3418f752d94ab74d2629110e19
+    short_sha: 82cf900
+    changed_paths:
+      - docs/espeak.md
+      - piperg2p/backends/espeak/clauses.py
+      - pyproject.toml
+      - tests/test_clause_backend.py
+      - tests/test_dependency_contract.py
+      - tests/test_espeak_exact_contract.py
+    stats:
+      files_changed: 6
+      insertions: 155
+      deletions: 26
+    inspected: true
+    inspected_paths:
+      - docs/espeak.md
+      - piperg2p/backends/espeak/clauses.py
+      - pyproject.toml
+      - tests/test_clause_backend.py
+      - tests/test_dependency_contract.py
+      - tests/test_espeak_exact_contract.py
+    observed_behavior:
+      CLI phonemization uses language-aware Phrasplit sentence spans
+      while preserving punctuation clusters and Piper clause grouping.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: add phrasplit for text split"
+    target_entry_id: entry-0002
+    notes: ""

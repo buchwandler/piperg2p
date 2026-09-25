@@ -1,0 +1,4 @@
+prune .ledger
+prune .taskledger
+prune .repairledger
+prune .releaseledger

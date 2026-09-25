@@ -1,0 +1,260 @@
+ .../main/releases/v0.1.6/audit/commit-audit.yaml   | 49 +++++++++++-----------
+ .../main/releases/v0.1.6/entries/entry-0001.md     | 15 +++----
+ .../releaseledger/work/v0.1.6/audit-decisions.yaml | 26 ++++++------
+ .ledger/releaseledger/work/v0.1.6/audit.yaml       | 36 ++++++++--------
+ .ledger/releaseledger/work/v0.1.6/entries.yaml     | 30 ++++++-------
+ .../work/v0.1.6/evidence/09645fa.patch             |  4 +-
+ docs/changelog.md                                  |  5 ++-
+ 7 files changed, 84 insertions(+), 81 deletions(-)
+
+diff --git a/.ledger/releaseledger/data/ledgers/main/releases/v0.1.6/audit/commit-audit.yaml b/.ledger/releaseledger/data/ledgers/main/releases/v0.1.6/audit/commit-audit.yaml
+index 819921e..28c0f40 100644
+--- a/.ledger/releaseledger/data/ledgers/main/releases/v0.1.6/audit/commit-audit.yaml
++++ b/.ledger/releaseledger/data/ledgers/main/releases/v0.1.6/audit/commit-audit.yaml
+@@ -11,27 +11,28 @@ git_head_sha: 09645fa455fbab501eca748a41255f8cea988413
+ git_range: 4131a70cf94850bd626e2b88dc2beed904af71c4..09645fa455fbab501eca748a41255f8cea988413
+ commit_count: 1
+ rows:
+-- sha: 09645fa455fbab501eca748a41255f8cea988413
+-  source_ref: git:09645fa455fbab501eca748a41255f8cea988413
+-  short_sha: 09645fa
+-  changed_paths:
+-  - piperg2p/spans.py
+-  - piperg2p/types.py
+-  - tests/test_annotations.py
+-  stats:
+-    files_changed: 3
+-    insertions: 38
+-    deletions: 2
+-  inspected: true
+-  inspected_paths:
+-  - piperg2p/spans.py
+-  - piperg2p/types.py
+-  - tests/test_annotations.py
+-  observed_behavior: Token annotations now accept morphological metadata and preserve
+-    it in token metadata for both dataclass and mapping inputs.
+-  public_impact: public
+-  decision: accepted
+-  stale: false
+-  evidence_subject: 'feat: add morph as input'
+-  target_entry_id: entry-0001
+-  notes: ''
++  - sha: 09645fa455fbab501eca748a41255f8cea988413
++    source_ref: git:09645fa455fbab501eca748a41255f8cea988413
++    short_sha: 09645fa
++    changed_paths:
++      - piperg2p/spans.py
++      - piperg2p/types.py
++      - tests/test_annotations.py
++    stats:
++      files_changed: 3
++      insertions: 38
++      deletions: 2
++    inspected: true
++    inspected_paths:
++      - piperg2p/spans.py
++      - piperg2p/types.py
++      - tests/test_annotations.py
++    observed_behavior:
++      Token annotations now accept morphological metadata and preserve
++      it in token metadata for both dataclass and mapping inputs.
++    public_impact: public
++    decision: accepted
++    stale: false
++    evidence_subject: "feat: add morph as input"
++    target_entry_id: entry-0001
++    notes: ""
+diff --git a/.ledger/releaseledger/data/ledgers/main/releases/v0.1.6/entries/entry-0001.md b/.ledger/releaseledger/data/ledgers/main/releases/v0.1.6/entries/entry-0001.md
+index 9bf6029..54c4402 100644
+--- a/.ledger/releaseledger/data/ledgers/main/releases/v0.1.6/entries/entry-0001.md
++++ b/.ledger/releaseledger/data/ledgers/main/releases/v0.1.6/entries/entry-0001.md
+@@ -7,23 +7,24 @@ versioning:
+ entry_id: entry-0001
+ release_version: v0.1.6
+ kind: added
+-summary: Added morphological metadata to token annotations and mapping-based annotation
++summary:
++  Added morphological metadata to token annotations and mapping-based annotation
+   input
+ status: accepted
+ audience: null
+ scopes: []
+ source_refs:
+-- git:09645fa455fbab501eca748a41255f8cea988413
++  - git:09645fa455fbab501eca748a41255f8cea988413
+ paths:
+-- piperg2p/spans.py
+-- piperg2p/types.py
+-- tests/test_annotations.py
++  - piperg2p/spans.py
++  - piperg2p/types.py
++  - tests/test_annotations.py
+ issues: []
+ prs: []
+ sources:
+-- git:09645fa455fbab501eca748a41255f8cea988413
++  - git:09645fa455fbab501eca748a41255f8cea988413
+ contributors:
+-- '@holgern'
++  - "@holgern"
+ breaking: false
+ internal: false
+ order: 1
+diff --git a/.ledger/releaseledger/work/v0.1.6/audit-decisions.yaml b/.ledger/releaseledger/work/v0.1.6/audit-decisions.yaml
+index 478b92b..64bdf93 100644
+--- a/.ledger/releaseledger/work/v0.1.6/audit-decisions.yaml
++++ b/.ledger/releaseledger/work/v0.1.6/audit-decisions.yaml
+@@ -1,14 +1,14 @@
+ rows:
+-- sha: 09645fa455fbab501eca748a41255f8cea988413
+-  inspected: true
+-  inspected_paths:
+-  - piperg2p/spans.py
+-  - piperg2p/types.py
+-  - tests/test_annotations.py
+-  observed_behavior: Token annotations now accept morphological metadata and preserve it in token metadata for both dataclass and mapping inputs.
+-  public_impact: public
+-  decision: accepted
+-  target_entry_key: null
+-  target_entry_id: null
+-  notes: ''
+-  stale: false
++  - sha: 09645fa455fbab501eca748a41255f8cea988413
++    inspected: true
++    inspected_paths:
++      - piperg2p/spans.py
++      - piperg2p/types.py
++      - tests/test_annotations.py
++    observed_behavior: Token annotations now accept morphological metadata and preserve it in token metadata for both dataclass and mapping inputs.
++    public_impact: public
++    decision: accepted
++    target_entry_key: null
++    target_entry_id: null
++    notes: ""
++    stale: false
+diff --git a/.ledger/releaseledger/work/v0.1.6/audit.yaml b/.ledger/releaseledger/work/v0.1.6/audit.yaml
+index 3fdd6cc..9e2a169 100644
+--- a/.ledger/releaseledger/work/v0.1.6/audit.yaml
++++ b/.ledger/releaseledger/work/v0.1.6/audit.yaml
+@@ -11,21 +11,21 @@ git_head_sha: 09645fa455fbab501eca748a41255f8cea988413
+ git_range: 4131a70cf94850bd626e2b88dc2beed904af71c4..09645fa455fbab501eca748a41255f8cea988413
+ commit_count: 1
+ rows:
+-- sha: 09645fa455fbab501eca748a41255f8cea988413
+-  source_ref: git:09645fa455fbab501eca748a41255f8cea988413
+-  short_sha: 09645fa
+-  changed_paths:
+-  - piperg2p/spans.py
+-  - piperg2p/types.py
+-  - tests/test_annotations.py
+-  stats:
+-    files_changed: 3
+-    insertions: 38
+-    deletions: 2
+-  inspected: false
+-  inspected_paths: []
+-  observed_behavior: ''
+-  public_impact: unknown
+-  decision: needs_review
+-  stale: false
+-  evidence_subject: 'feat: add morph as input'
++  - sha: 09645fa455fbab501eca748a41255f8cea988413
++    source_ref: git:09645fa455fbab501eca748a41255f8cea988413
++    short_sha: 09645fa
++    changed_paths:
++      - piperg2p/spans.py
++      - piperg2p/types.py
++      - tests/test_annotations.py
++    stats:
++      files_changed: 3
++      insertions: 38
++      deletions: 2
++    inspected: false
++    inspected_paths: []
++    observed_behavior: ""
++    public_impact: unknown
++    decision: needs_review
++    stale: false
++    evidence_subject: "feat: add morph as input"
+diff --git a/.ledger/releaseledger/work/v0.1.6/entries.yaml b/.ledger/releaseledger/work/v0.1.6/entries.yaml
+index 8da7ab5..e82a530 100644
+--- a/.ledger/releaseledger/work/v0.1.6/entries.yaml
++++ b/.ledger/releaseledger/work/v0.1.6/entries.yaml
+@@ -9,18 +9,18 @@ git_head_ref: 09645fa455fbab501eca748a41255f8cea988413
+ git_head_sha: 09645fa455fbab501eca748a41255f8cea988413
+ include_merges: nontrivial
+ entries:
+-- kind: added
+-  summary: Added morphological metadata to token annotations and mapping-based annotation input
+-  status: accepted
+-  source_refs:
+-  - git:09645fa455fbab501eca748a41255f8cea988413
+-  paths:
+-  - piperg2p/spans.py
+-  - piperg2p/types.py
+-  - tests/test_annotations.py
+-  sources:
+-  - git:09645fa455fbab501eca748a41255f8cea988413
+-  prs: []
+-  issues: []
+-  contributors:
+-  - '@holgern'
++  - kind: added
++    summary: Added morphological metadata to token annotations and mapping-based annotation input
++    status: accepted
++    source_refs:
++      - git:09645fa455fbab501eca748a41255f8cea988413
++    paths:
++      - piperg2p/spans.py
++      - piperg2p/types.py
++      - tests/test_annotations.py
++    sources:
++      - git:09645fa455fbab501eca748a41255f8cea988413
++    prs: []
++    issues: []
++    contributors:
++      - "@holgern"
+diff --git a/.ledger/releaseledger/work/v0.1.6/evidence/09645fa.patch b/.ledger/releaseledger/work/v0.1.6/evidence/09645fa.patch
+index 81a1c9c..7ef76ff 100644
+--- a/.ledger/releaseledger/work/v0.1.6/evidence/09645fa.patch
++++ b/.ledger/releaseledger/work/v0.1.6/evidence/09645fa.patch
+@@ -14,7 +14,7 @@ index c694a7d..3574ef2 100644
+ +            value.get("morph"),
+          )
+      raise TypeError("annotation must be TokenAnnotation or mapping")
+-
++
+ @@ -157,6 +158,8 @@ def _update_token_metadata(
+                      token.meta["tag"] = annotation.tag
+                  if annotation.lemma is not None:
+@@ -33,7 +33,7 @@ index 5d8b482..b5637bd 100644
+      lemma: str | None = None
+      language: str | None = None
+ +    morph: str | None = None
+-
++
+      @property
+      def char_start(self) -> int:
+ diff --git a/tests/test_annotations.py b/tests/test_annotations.py
+diff --git a/docs/changelog.md b/docs/changelog.md
+index ad75bc7..42eef62 100644
+--- a/docs/changelog.md
++++ b/docs/changelog.md
+@@ -3,14 +3,15 @@
+ > **Generated by releaseledger.** Manual edits may be overwritten. Update releaseledger entries and rebuild this file instead.
+
+ <!-- releaseledger:generated-file -->
++
+ ## [v0.1.6] - Unreleased
++
+ ### Added
++
+ - Added morphological metadata to token annotations and mapping-based annotation input
+
+ <!-- generated by releaseledger -->
+
+-
+-
+ ## [v0.1.5] - 2026-09-19
+
+ ### Added

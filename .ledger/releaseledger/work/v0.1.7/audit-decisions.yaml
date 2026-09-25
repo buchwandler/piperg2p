@@ -1,0 +1,34 @@
+rows:
+  - sha: 175ca5b3db36dcf0adbd14e75b4489a28cada95f
+    inspected: true
+    inspected_paths:
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.6/audit/commit-audit.yaml
+      - .ledger/releaseledger/data/ledgers/main/releases/v0.1.6/entries/entry-0001.md
+      - .ledger/releaseledger/work/v0.1.6/audit-decisions.yaml
+      - .ledger/releaseledger/work/v0.1.6/audit.yaml
+      - .ledger/releaseledger/work/v0.1.6/entries.yaml
+      - .ledger/releaseledger/work/v0.1.6/evidence/09645fa.patch
+      - docs/changelog.md
+    observed_behavior: "Reformatted checked-in ReleaseLedger YAML and generated changelog whitespace; no package or API behavior changed."
+    public_impact: internal
+    decision: internal
+    target_entry_key: null
+    target_entry_id: null
+    notes: "Repository bookkeeping only."
+    stale: false
+  - sha: 82cf9008469efe3418f752d94ab74d2629110e19
+    inspected: true
+    inspected_paths:
+      - docs/espeak.md
+      - piperg2p/backends/espeak/clauses.py
+      - pyproject.toml
+      - tests/test_clause_backend.py
+      - tests/test_dependency_contract.py
+      - tests/test_espeak_exact_contract.py
+    observed_behavior: "CLI phonemization uses language-aware Phrasplit sentence spans while preserving punctuation clusters and Piper clause grouping."
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: ""
+    stale: false
