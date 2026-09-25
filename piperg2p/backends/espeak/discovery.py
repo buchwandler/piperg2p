@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from espeakng_runtime import inspect_espeak as runtime_inspect_espeak
+from espeakng_runtime.discovery import LibraryCandidate as RuntimeLibraryCandidate
 from espeakng_runtime.discovery import discover as runtime_discover
 from espeakng_runtime.discovery import find_data as runtime_find_data
 from espeakng_runtime.discovery import find_executable as runtime_find_executable
@@ -157,7 +158,16 @@ def probe_library_candidate(
     candidate: EspeakLibraryCandidate,
 ) -> EspeakLibraryProbe:
     try:
-        return _probe(runtime_probe_library(candidate))
+        return _probe(
+            runtime_probe_library(
+                RuntimeLibraryCandidate(
+                    library=candidate.library,
+                    source=candidate.source,
+                    data=candidate.data,
+                    explicit=candidate.explicit,
+                )
+            )
+        )
     except EspeakUnavailableError as exc:
         raise BackendUnavailableError(str(exc)) from exc
 

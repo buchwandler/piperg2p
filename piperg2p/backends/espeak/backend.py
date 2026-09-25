@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Literal
 
+if TYPE_CHECKING:
+    from espeakng_runtime.discovery import LibraryProbe as RuntimeLibraryProbe
 from espeakng_runtime import EspeakRuntime, RuntimeInfo
 from espeakng_runtime.errors import (
     CapabilityError,
@@ -48,7 +51,7 @@ def _legacy_source(source: str | None) -> str | None:
 def _diagnostics_from_runtime(
     info: RuntimeInfo,
     *,
-    native_candidates: tuple[object, ...] = (),
+    native_candidates: tuple[RuntimeLibraryProbe, ...] = (),
     warnings: tuple[str, ...] = (),
 ) -> BackendDiagnostics:
     from .discovery import EspeakLibraryProbe
@@ -103,7 +106,7 @@ def _raise_phonemization_error(exc: Exception) -> None:
 
 @dataclass
 class EspeakBackend:
-    mode: str = "auto"
+    mode: Literal["auto", "native", "cli"] = "auto"
     executable: str | None = None
     library: str | None = None
     data: str | None = None
@@ -139,7 +142,7 @@ class EspeakBackend:
             raise BackendUnavailableError(
                 "native eSpeak runtime lacks Piper's exact clause capability"
             )
-        native_candidates: tuple[object, ...] = ()
+        native_candidates: tuple[RuntimeLibraryProbe, ...] = ()
         if self.mode != "cli":
             native_candidates = self._runtime.native_probes
         fallback_reason = info.fallback_reason

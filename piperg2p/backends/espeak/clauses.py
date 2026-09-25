@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from espeakng_runtime import Clause as RuntimeClause
+    from espeakng_runtime import EspeakRuntime
 
 _LANG_SWITCH_RE = re.compile(r"\([^)]+\)")
 
@@ -133,7 +134,7 @@ def split_cli_clauses(
 
 
 def best_effort_clauses(
-    runtime: object,
+    runtime: EspeakRuntime,
     text: str,
     *,
     voice: str,

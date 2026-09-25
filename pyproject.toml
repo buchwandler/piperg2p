@@ -71,3 +71,8 @@ markers = [
 
 [tool.ruff.lint]
 ignore = ["PYI034", "UP037"]
+
+[tool.mypy]
+[[tool.mypy.overrides]]
+module = ["espeakng_runtime", "espeakng_runtime.*", "phrasplit", "phrasplit.*"]
+ignore_missing_imports = true
