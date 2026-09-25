@@ -65,7 +65,7 @@ def compose_clauses(
         if payload:
             current.extend(payload)
         if clause.terminator:
-            current.append(clause.terminator)
+            current.extend(clause.terminator)
             if clause.terminator in ",:;":
                 current.append(" ")
         if clause.sentence_end and current:
@@ -76,20 +76,59 @@ def compose_clauses(
     return sentences
 
 
-def split_cli_clauses(text: str) -> list[tuple[str, str | None, bool]]:
-    """Split CLI input into an explicitly best-effort clause stream."""
+def split_cli_clauses(
+    text: str, *, language: str = "en"
+) -> list[tuple[str, str | None, bool]]:
+    """Split best-effort CLI text by robust sentences and Piper clauses."""
+    if not text:
+        return []
+
+    from phrasplit import split_with_offsets_with_diagnostics
+
+    split_result = split_with_offsets_with_diagnostics(
+        text, mode="sentence", use_spacy=False, language=language
+    )
+    spans = split_result.segments
+    if not spans:
+        return [(text, None, False)]
+
     clauses: list[tuple[str, str | None, bool]] = []
-    position = 0
-    for match in re.finditer(r"(.*?)([.!?]|[,;:]|$)", text, re.DOTALL):
-        if match.start() != position:
-            continue
-        body, terminator = match.groups()
-        if not body and not terminator:
-            break
-        clauses.append((body, terminator, bool(terminator and terminator in ".!?")))
-        position = match.end()
-        if position >= len(text):
-            break
+    previous_end = 0
+    for span in spans:
+        sentence = text[previous_end : span.char_start] + span.text
+        previous_end = span.char_end
+        terminal = re.search(r"([.!?]+)([\"'’”»)\]]*)$", sentence)
+        terminal_start = terminal.start() if terminal is not None else len(sentence)
+        urls: list[tuple[int, int]] = []
+        for match in re.finditer(r"(?:https?://|www\.)\S+", sentence, re.IGNORECASE):
+            url_end = match.end()
+            while url_end > match.start() and sentence[url_end - 1] in ".,;:!?":
+                url_end -= 1
+            urls.append((match.start(), url_end))
+
+        part_start = 0
+        for position, char in enumerate(sentence[:terminal_start]):
+            if char not in ",;:" or any(start <= position < end for start, end in urls):
+                continue
+            clauses.append((sentence[part_start:position], char, False))
+            part_start = position + 1
+
+        if terminal is not None:
+            clauses.append(
+                (
+                    sentence[part_start : terminal.start()],
+                    terminal.group(1) + terminal.group(2),
+                    True,
+                )
+            )
+        elif part_start < len(sentence):
+            clauses.append((sentence[part_start:], None, False))
+        elif not sentence:
+            clauses.append(("", None, False))
+
+    trailing = text[previous_end:]
+    if trailing:
+        clauses.append((trailing, None, False))
     return clauses
 
 
@@ -100,7 +139,7 @@ def best_effort_clauses(
     voice: str,
 ) -> list[Clause]:
     """Batch CLI clause phonemization through runtime.phonemize_many()."""
-    parts = split_cli_clauses(text)
+    parts = split_cli_clauses(text, language=voice)
     if not parts:
         return []
     values: list[str] = runtime.phonemize_many(

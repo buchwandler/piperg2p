@@ -17,6 +17,7 @@ authors = [{name = "piperg2p contributors"}]
 keywords = ["tts", "piper", "g2p", "phonemizer", "onnx", "espeak"]
 dependencies = [
   "espeakng-runtime>=0.1.5,<0.2",
+  "phrasplit>=0.3.6,<0.4",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",

@@ -5,7 +5,7 @@ from importlib.metadata import requires
 from packaging.requirements import Requirement
 
 FORBIDDEN_SEMANTIC_DEPENDENCIES = frozenset({"numeralform", "spokenform"})
-ALLOWED_CORE_RUNTIME_DEPENDENCIES = frozenset({"espeakng-runtime"})
+ALLOWED_CORE_RUNTIME_DEPENDENCIES = frozenset({"espeakng-runtime", "phrasplit"})
 
 
 def _piperg2p_requirements() -> list[Requirement]:

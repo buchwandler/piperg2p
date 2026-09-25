@@ -105,13 +105,13 @@ def test_cli_policy_uses_local_splitter_and_not_runtime_clauses():
     Runtime.info_value = _info(mode="cli", exact=False)
     backend = EspeakBackend(mode="cli")
 
-    assert backend.phonemize("Hello... World?!", voice="en-us") == [
-        ["H", "e", "l", "l", "o", "."],
-        ["."],
-        ["."],
-        [" ", "W", "o", "r", "l", "d", "?"],
-        ["!"],
+    text = "Hello... World?!"
+    result = backend.phonemize(text, voice="en-us")
+    assert result == [
+        ["H", "e", "l", "l", "o", ".", ".", "."],
+        [" ", "W", "o", "r", "l", "d", "?", "!"],
     ]
+    assert "".join(symbol for group in result for symbol in group) == text
     assert any(call[0] == "phonemize_many" for call in backend._runtime.calls)
     backend.close()
 
@@ -176,7 +176,7 @@ def test_cli_policy_preserves_multiline_clause_body_for_runtime_batch():
 
     texts, selected_voice = batch_calls[0][1]
     assert selected_voice == "en-us"
-    assert texts[0] == '\n\n"But wait'
+    assert texts[0] == '\n\n"But wait..." she asked'
 
     backend.close()
 
