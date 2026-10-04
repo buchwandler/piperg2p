@@ -1,41 +1,65 @@
 # Pronunciation lexicons
 
-`piperg2p` has two runtime modes for eSpeak voices:
+PiperG2P can optionally overlay lexicon pronunciations on an eSpeak voice. Raw `[[ ... ]]` blocks take precedence, then configured lexicons are consulted, and unresolved source intervals are sent to PiperG2P's own eSpeak backend. PiperG2P owns fallback policy; Lexphon performs lexicon-only lookup.
 
-- **eSpeak-only**, the default, preserves the normal Piper-compatible eSpeak route.
-- **Lexicon-first**, an opt-in overlay that uses a pronunciation lexicon for source words and sends unresolved source intervals to PiperG2P's own `EspeakBackend`.
+> **No implicit downloads:** PiperG2P never downloads lexicon data. Provision and verify assets explicitly before runtime selection.
 
-Lexicon-first is a PiperG2P extension. It intentionally overrides selected eSpeak pronunciations and is not upstream Piper exact parity.
+## Provision managed Lexphon assets
 
-## Managed Lexphon assets
-
-Install the optional dependency:
+Install the optional adapter and use Lexphon's data commands to inspect and provision assets:
 
 ```bash
-pip install 'piperg2p[lexphon]'
+python -m pip install "piperg2p[lexphon]"
+lexphon data available de-DE
+lexphon data install <lexicon-id>
+lexphon data verify <lexicon-id>
 ```
 
-Then select installed identifiers at runtime:
+Inspect what is locally installed before choosing an identifier:
 
 ```python
-from piperg2p import PiperFrontend
+from piperg2p import available_lexicons, lexicon_info
 
-frontend = PiperFrontend.from_config(
-    "voice.onnx.json",
-    lexicons=("de-de:espeak-piper",),
-)
+for name in available_lexicons("de-DE"):
+    print(name, lexicon_info("de-DE", name))
 ```
 
-Lexphon is used with `fallback=None`. It performs lexicon-only lookup. A miss is passed to PiperG2P's eSpeak backend, not to Lexphon's generic eSpeak provider. Data is never downloaded implicitly. Install and verify assets through Lexphon's data tooling before inference.
+Select an installed asset by its actual identifier:
 
-The lexicon language defaults to `VoiceConfig.espeak_voice`.
+```python
+from piperg2p import get_g2p
 
-## Direct local G2Lex assets
+with get_g2p(
+    "de-de",
+    config="voice.onnx.json",
+    lexicons=("<installed-lexicon-id>",),
+) as g2p:
+    result = g2p.phonemize_prepared("Guten Tag")
+```
 
-Install the separate runtime and pass explicit files:
+The placeholder is not a promise that any particular identifier is published. Keep provisioning separate from runtime startup.
+
+## Lookup and fallback behavior
+
+Lexicon lookup is lexicon-only. A miss is passed to PiperG2P's eSpeak backend, not to Lexphon's generic eSpeak provider. Disable that fallback with `use_espeak_fallback=False` when a miss should remain explicit. Final IDs always use the configured voice map and its missing-symbol policy.
+
+Generic `ipa` pronunciations are normalized as generic IPA overrides. `espeak-ipa3` pronunciations are retained as Piper raw phoneme content. A lexicon hit that contains a symbol absent from the voice map is not silently replaced by eSpeak. Lexicon-first output is an intentional extension, not an unqualified exact-upstream-parity claim.
+
+Precedence is:
+
+1. Explicit `[[ raw phonemes ]]` blocks.
+2. Configured lexicons, in order.
+3. PiperG2P eSpeak fallback for unresolved source intervals, unless disabled.
+4. The voice's missing-symbol policy during ID encoding.
+
+`result.diagnostics.lexicon` reports overlay implementation, language, identifiers, encodings, asset provenance, and compatibility label. Lookup/resource failures are errors, not normal misses. Optional packages are imported only when the corresponding adapter is selected.
+
+## Direct local G2Lex files
+
+For local development with explicit `.g2lex` files, install the separate extra and use the G2Lex adapter directly:
 
 ```bash
-pip install 'piperg2p[g2lex]'
+python -m pip install "piperg2p[g2lex]"
 ```
 
 ```python
@@ -49,39 +73,6 @@ frontend = PiperFrontend.from_config(
 )
 ```
 
-The direct adapter uses exact keys and configured path order. It is intended for local development before assets are installed into Lexphon. Built-in adapters read the modern `phoneme_encoding` metadata, accept generic IPA and `espeak-ipa3`, and reject unsupported kinds, languages, or encodings.
-Injected adapters are owned by the caller. Adapters created internally from `lexicons=` are closed by `PiperFrontend`.
+This is a separate local-development path; the injected adapter is caller-owned. Built-in adapters read `phoneme_encoding` metadata, accept generic IPA and `espeak-ipa3`, and reject unsupported kinds, languages, or encodings.
 
-## Precedence and composition
-
-The precedence order is:
-
-1. Explicit `[[ raw phonemes ]]` blocks.
-2. Configured lexicons, in order.
-3. PiperG2P eSpeak fallback for unresolved source intervals.
-4. The configured model missing-symbol policy during ID encoding.
-
-Words are scanned without discarding punctuation or source whitespace. Lookup is batched per ordinary source segment. Unresolved intervals are coalesced so eSpeak retains context, while explicit raw and lexical segments remain in source order. Generic IPA hits use NFD normalization. `espeak-ipa3` hits are preserved as Piper raw phoneme content. Final IDs always use the voice-specific map and selected missing-symbol policy.
-
-A lexicon hit containing a symbol absent from the voice map is not silently replaced by eSpeak. `error`, `warn`, and `ignore` follow the normal encoder policy.
-
-## Diagnostics and reproducibility
-
-`result.diagnostics.lexicon` reports whether the overlay is enabled, its implementation, language, identifiers, encodings, immutable asset provenance, and compatibility label. The labels distinguish generic IPA overrides from Piper frozen eSpeak assets. Asset provenance should include data version, producer, transform, and generator identity when supplied. A frozen eSpeak-derived dictionary combined with a different live eSpeak version can produce mixed-version output, so lexicon-first output is an extension rather than an unqualified exactness claim.
-
-Lexicon lookup/resource failures are errors, not normal misses. Optional packages are imported only when an adapter is selected. Core imports and eSpeak-only frontends do not require Lexphon or G2Lex.
-
-Mixed lexicon/eSpeak sentences can differ from pure eSpeak because selected source spans are intentionally converted independently. Do not claim bit-identical upstream Piper output for lexicon-first mode.
-
-## Discovery and evidence API
-
-Installed pronunciation assets can be inspected without network access:
-
-```python
-from piperg2p import available_lexicons, lexicon_info
-
-for name in available_lexicons("de"):
-    print(name, lexicon_info("de", name))
-```
-
-`g2p.lexicon_evidence(word, tag=...)` returns provenance for a selected hit. Set `use_espeak_fallback=False` to make a lexicon miss explicit instead of sending it to live eSpeak.
+`g2p.lexicon_evidence(word, tag=...)` can expose provenance for a selected hit. Mixed lexicon/eSpeak sentences may differ from pure eSpeak because selected source spans are intentionally processed independently.

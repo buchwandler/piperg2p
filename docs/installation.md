@@ -1,83 +1,66 @@
 # Installation
 
-The core package supports Python 3.10 and newer and depends on `espeakng-runtime` for eSpeak infrastructure. It has no dependency on semantic preparation packages.
+## Python requirement
+
+PiperG2P supports Python 3.10 and newer.
+
+## Install the package
 
 ```bash
-pip install .
+python -m pip install piperg2p
 ```
 
-## Semantic preparation boundary
+The core package depends on `espeakng-runtime` for eSpeak infrastructure and `phrasplit` for sentence segmentation. It does not depend on Piper, Spokenform, or Numeralform.
 
-PiperG2P consumes prepared, speakable text. It does not depend on Numeralform
-or Spokenform and does not own written-to-spoken semantic normalization.
-Higher-level applications should perform that preparation before calling
-PiperG2P.
+## eSpeak runtime choices
 
-## Optional semantic preparation
-
-Spokenform is a separate package for applications that need written-to-spoken semantic expansion. Install it independently from PiperG2P:
+Text voices do not invoke eSpeak. For eSpeak voices, `espeakng-runtime` discovers and manages the native library or CLI fallback. The `espeak-direct` extra enables its bundled-loader support where supported:
 
 ```bash
-python -m pip install spokenform
+python -m pip install "piperg2p[espeak-direct]"
 ```
 
-```python
-from spokenform import prepare_for_piperg2p
-from piperg2p import phonemize_prepared
+See [eSpeak modes and capability inspection](espeak.md) for backend behavior and configuration precedence.
 
-prepared = prepare_for_piperg2p(
-    "Pay $12.50 for 2 kg.",
-    language="en",
-).spoken_text
+## Optional extras
 
-result = phonemize_prepared(
-    prepared,
-    language="en-us",
-    config="voice.onnx.json",
-)
-```
+| Extra           | Purpose                                          |
+| --------------- | ------------------------------------------------ |
+| `lexphon`       | Managed installed pronunciation assets           |
+| `lexicons`      | Alias-equivalent convenience extra for `lexphon` |
+| `g2lex`         | Direct local `.g2lex` files                      |
+| `espeak-direct` | Bundled `espeakng-runtime` loader support        |
+| `reference`     | Reference/phonetic benchmark tooling             |
+| `docs`          | Sphinx, MyST Parser, and RTD theme               |
+| `dev`           | Tests, lint, type-check, and package build tools |
 
-Spokenform is not a PiperG2P core, optional-extra, development, or core-test dependency.
-The `dev` extra provides pytest, coverage, ruff, mypy, and build tooling. `espeakng-runtime` owns eSpeak discovery, native execution, CLI fallback, and lifetime management. Its executable, shared library, and data directory can be selected with Piper constructor arguments or the legacy `PIPERG2P_ESPEAK_EXECUTABLE`, `PIPERG2P_ESPEAK_LIBRARY`, and `PIPERG2P_ESPEAK_DATA` variables.
+Lexicon data is provisioned separately and is never downloaded by PiperG2P at runtime. See [lexicon provisioning](lexicons.md).
 
-For bundled loader support:
+## Termux / Android
 
-```bash
-pip install "piperg2p[espeak-direct]"
-```
-
-Runtime variables are `ESPEAKNG_RUNTIME_EXECUTABLE`, `ESPEAKNG_RUNTIME_LIBRARY`, and `ESPEAKNG_RUNTIME_DATA`. Precedence is explicit Piper constructor argument, legacy Piper variable, runtime variable, then runtime automatic discovery.
-
-For exact Piper native parity, ordinary eSpeak availability is not sufficient. Piper asks the runtime for an exact-capable native backend. Native mode requires that capability, auto mode falls back to CLI with a Piper warning, and CLI mode remains explicit best-effort behavior. `inspect_espeak()` is a Piper compatibility facade over runtime inspection.
-
-No frontend downloads models or makes network requests during phonemization.
-
-Optional lexicon adapters are installed separately:
-
-```bash
-pip install 'piperg2p[lexphon]'  # managed Lexphon identifiers
-pip install 'piperg2p[g2lex]'     # explicit local .g2lex files
-pip install 'piperg2p[espeak-direct]'  # packaged modern eSpeak loader
-```
-
-These packages are not imported or required for core/text/eSpeak-only use.
-
-### Termux / Android
-
-On Termux, install the native package:
+Install the system eSpeak package and PiperG2P:
 
 ```bash
 pkg install espeak
 python -m pip install piperg2p
 ```
 
-Do not use `piperg2p[espeak-direct]` merely to obtain eSpeak on Termux.
-The bundled `espeakng-loader` backend targets supported desktop/server
-platforms; Termux should use its system eSpeak installation.
+Do not use the desktop/server bundled loader merely to obtain eSpeak on Android. Use `inspect_espeak()` to see whether an exact-capable native library is available. `espeak_mode="auto"` selects native operation when the required capability is present and otherwise falls back to CLI. Capability discovery handles system package changes without relying on a hard-coded eSpeak version.
 
-Current Termux packages eSpeak NG 1.52.0. That version does not expose
-`espeak_TextToPhonemesWithTerminator`, so Piper exact native clause
-parity is not available from the system library. `mode="auto"` therefore
-uses the CLI best-effort fallback. Once Termux ships an eSpeak NG build
-that exposes the terminator API, capability discovery will select it
-without a `piperg2p` version-specific change.
+## Development and documentation
+
+From a source checkout, install the development tools and run the checks:
+
+```bash
+python -m pip install -e ".[dev]"
+python -m pytest -q
+```
+
+For documentation work, include the docs extra:
+
+```bash
+python -m pip install -e ".[dev,docs]"
+python docs/make.py html
+```
+
+PiperG2P consumes prepared, speakable text rather than verbalizing written numbers, dates, units, and similar semantics. See the canonical [prepared-text guide](prepared-text.md) for that boundary and optional composition.

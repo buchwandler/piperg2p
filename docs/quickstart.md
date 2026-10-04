@@ -1,22 +1,8 @@
 # Quick start
 
-The examples below pass prepared, speakable text. Semantic expansion belongs to the calling application, not PiperG2P.
+## One-shot structured result
 
-```python
-from piperg2p import PiperFrontend
-
-with PiperFrontend.from_config("voice.onnx.json") as frontend:
-    result = frontend.phonemize("Hello world.")
-    for sentence in result.sentences:
-        print(sentence.phoneme_string)
-        print(sentence.ids)
-```
-
-For a text voice, `phonemize` decomposes input with Unicode NFD and treats each resulting codepoint as a model phoneme. For an eSpeak voice, it selects the configured eSpeak voice and returns one result per detected sentence.
-
-Use `frontend.diagnostics` or `result.diagnostics` to inspect backend implementation and parity.
-
-For sibling-style calls, use the explicit high-level facade:
+Use `phonemize_prepared()` for a structured result:
 
 ```python
 from piperg2p import phonemize_prepared
@@ -30,37 +16,26 @@ print(result.phonemes)
 print(result.token_ids)
 ```
 
-## Prepare semantics outside the core
+`language` is a source/routing label. The `config` selects the Piper voice, including its phoneme type, base eSpeak voice, and authoritative `phoneme_id_map`. A language argument does not switch the configured Piper model or base voice.
 
-Semantic preparation belongs in the calling application when written forms need expansion:
+## Reusable facade
+
+For repeated calls, `get_g2p()` provides a reusable, bounded-cache facade:
 
 ```python
-from spokenform import prepare_for_piperg2p
-from piperg2p import phonemize_prepared
+from piperg2p import get_g2p
 
-prepared = prepare_for_piperg2p(
-    "Pay $12.50 for 2 kg.",
-    language="en",
-)
-
-result = phonemize_prepared(
-    prepared.spoken_text,
-    language="en-us",
-    config="voice.onnx.json",
-)
-
-print(result.phonemes)
+with get_g2p("en-us", config="voice.onnx.json") as g2p:
+    result = g2p.phonemize_prepared("Hello world")
+    for sentence in result.sentences:
+        print(sentence.phoneme_string)
+        print(sentence.ids)
 ```
 
-The semantic language and Piper voice are separate choices. Spokenform prepares one explicitly selected language; PiperG2P then phonemizes the prepared text using the explicitly selected voice configuration.
+## Result and advanced features
 
-The optional preparation package is not imported by PiperG2P and is not required for a minimal PiperG2P installation.
+`PhonemizeResult` exposes the flattened phoneme string and token IDs as convenient views. For Piper inference, process each `sentence.ids` independently. See [practical usage](usage.md) for return types, caching, policies, and configuration inputs.
 
-```text
-Spokenform language: "en"
-Piper voice/config:   "en-us" + voice.onnx.json
-```
+PiperG2P consumes prepared, speakable text and does not own number, unit, date, currency, or abbreviation verbalization. See the canonical [prepared-text guide](prepared-text.md) for semantic ownership and composition boundaries.
 
-Do not imply that the Spokenform language selects a Piper voice.
-
-`result.tokens` contains source offsets. `result.sentences` remains authoritative for sentence-wise Piper inference.
+For source-aligned overrides, annotations, and marker helpers, see [overrides](overrides.md). For explicit and evidence-driven language selection, see [language routing](language-routing.md).

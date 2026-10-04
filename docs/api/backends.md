@@ -1,19 +1,29 @@
 # Backend API
 
-`EspeakBackend(mode="auto")` is PiperG2P's adapter to `espeakng-runtime`. It requests an exact-capable native runtime when available and otherwise uses runtime CLI phonemization with Piper's local clause splitter and composition. Automatic fallback emits `BackendFallbackWarning`; explicit `mode="cli"` does not warn.
+The eSpeak adapter delegates discovery and execution to `espeakng-runtime` while retaining Piper-specific clause composition and phoneme policy. `auto`, `native`, and `cli` behavior and capability semantics are explained in the [eSpeak guide](../espeak.md).
 
-`mode="native"` requires exact native clause support and raises `BackendUnavailableError` when it is unavailable. `mode="cli"` does not probe native through Piper policy and always reports best-effort parity.
+```{autoclass} piperg2p.EspeakBackend
+:members: diagnostics, phonemize, close
+:special-members: __init__
+:show-inheritance:
+```
 
-Piper owns the public three-field `Clause`, clause composition, NFD normalization, punctuation spacing, language-switch and joiner cleanup, vowel-cluster merging, raw blocks, and lexicon overlays. Runtime clauses are converted explicitly at the adapter boundary. Runtime terminator codes are not exposed through Piper's local `Clause`.
+```{autoclass} piperg2p.EspeakCliBackend
+:members: diagnostics, phonemize, close
+:special-members: __init__
+:show-inheritance:
+```
 
-`BackendDiagnostics` preserves Piper's stable diagnostics fields while mapping `RuntimeInfo`, including implementation, selected executable/library/data paths, discovery source, version, exact clause capability, parity, fallback reason, warnings, and native candidate probes. The runtime source name `espeakng-loader` is mapped to Piper's historical `modern-loader` name.
+`NativeEspeakProvider` and `EspeakCliBackend` are retained as compatibility wrappers for downstream users. Piper's public `Clause` has three fields; runtime clause terminator codes are converted at the adapter boundary and are not exposed through that type.
 
-The compatibility classes `EspeakCliBackend` and `NativeEspeakProvider` remain available. They retain their existing constructor shapes while delegating all eSpeak execution and lifetime management to `espeakng-runtime`.
+```{autoclass} piperg2p.NativeEspeakProvider
+:members:
+:show-inheritance:
+```
 
-Legacy configuration variables remain supported:
+```{autoclass} piperg2p.TextBackend
+:members: diagnostics, phonemize, close
+:show-inheritance:
+```
 
-- `PIPERG2P_ESPEAK_EXECUTABLE`
-- `PIPERG2P_ESPEAK_LIBRARY`
-- `PIPERG2P_ESPEAK_DATA`
-
-Explicit Piper constructor arguments take precedence over those variables, followed by the corresponding `ESPEAKNG_RUNTIME_*` variables and runtime discovery. `inspect_espeak()` is a non-initializing Piper compatibility facade over runtime inspection.
+Piper owns the public frontend boundary, NFD normalization, punctuation spacing, language-switch and joiner cleanup, vowel-cluster merging, raw blocks, and lexicon overlays. See [diagnostics](diagnostics.md) for stable reported fields.

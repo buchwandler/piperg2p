@@ -50,9 +50,19 @@ reference = [
   "phonodist>=0.1.0,<0.2",
 ]
 
+docs = [
+  "sphinx>=8",
+  "myst-parser>=4",
+  "sphinx-rtd-theme>=3",
+]
+
 [project.urls]
 Repository = "https://github.com/buchwandler/piperg2p"
 Homepage = "https://github.com/buchwandler/piperg2p"
+Issues = "https://github.com/buchwandler/piperg2p/issues"
+Documentation = "https://github.com/buchwandler/piperg2p/blob/main/docs/index.md"
+Changelog = "https://github.com/buchwandler/piperg2p/blob/main/docs/changelog.md"
+
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -1,45 +1,11 @@
 # Raw phonemes
 
-In eSpeak mode, `[[ ... ]]` blocks are parsed before normal conversion. Their contents are inserted as phoneme characters and are not normalized or sent through eSpeak. Adjacent normal text is composed into the active sentence so a normal sentence immediately following a raw block joins that active group.
+In eSpeak mode, PiperG2P recognizes `[[ ... ]]` blocks before normal conversion. Their contents are inserted as phoneme characters and are not normalized or sent through eSpeak. Adjacent ordinary text remains composed into its sentence group. With a lexicon overlay, raw blocks take precedence over lexicon lookup. Raw symbols still pass through the configured voice map and are reported as missing when they are unmapped.
 
-## Semantic preparation and raw blocks
+Opening or closing delimiters without a matching pair are deterministic ordinary text. Empty blocks add no symbols. See the [executable examples](https://github.com/buchwandler/piperg2p/blob/main/examples/README.md) for executable raw-block usage.
 
-PiperG2P owns raw blocks such as `[[ tɛst ]]`. Spokenform must not reinterpret text inside those blocks. Discover Piper raw blocks before semantic preparation and pass their source ranges to Spokenform as protected spans:
+## Compose with external text rewriting
 
-```python
-from piperg2p import (
-    RawPhonemeSegment,
-    parse_raw_blocks,
-    phonemize_prepared,
-)
-from spokenform import ProtectedSpan, prepare_for_piperg2p
+PiperG2P owns the `[[ ... ]]` syntax. If an external semantic-preparation layer runs before phonemization, identify and protect raw-block source ranges before rewriting ordinary text, then restore the blocks for PiperG2P. This is an external composition pattern, not a locally verified integration: the preparation package is not included in this repository snapshot or required by PiperG2P.
 
-source = "Use 2 kg [[ tɛst ]] and 3 kg."
-
-protected = [
-    ProtectedSpan(
-        segment.source_start,
-        segment.source_end,
-        kind="piperg2p-raw-phonemes",
-    )
-    for segment in parse_raw_blocks(source)
-    if isinstance(segment, RawPhonemeSegment)
-]
-
-prepared = prepare_for_piperg2p(
-    source,
-    language="en",
-    protected_spans=protected,
-)
-
-result = phonemize_prepared(
-    prepared.spoken_text,
-    language="en-us",
-    config="voice.onnx.json",
-)
-```
-
-Discover Piper raw blocks before semantic preparation and pass their source ranges to Spokenform as protected spans. This keeps caller-owned raw phonemes unchanged while surrounding written semantics can be expanded.
-
-If an application also has source-coordinate overrides, map those source spans through `PreparedText.map_source_span()` before constructing overrides for the prepared text. Do not reuse token or POS metadata from the source text across a semantic replacement without reanalyzing the prepared text.
-Opening and closing delimiters without a matching pair are deterministic ordinary text. Empty blocks do not add symbols. Raw symbols still pass through the configured voice map and therefore appear in missing-phoneme diagnostics when unmapped.
+Any override or annotation offsets must be remapped to the final transformed text after rewriting. See the canonical [prepared-text guide](prepared-text.md) for source-coordinate ownership and [overrides](overrides.md) for half-open span semantics.

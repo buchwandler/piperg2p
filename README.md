@@ -1,53 +1,42 @@
 [![PyPI - Version](https://img.shields.io/pypi/v/piperg2p)](https://pypi.org/project/piperg2p/)
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/piperg2p)
-![PyPI - Downloads](https://img.shields.io/pypi/dm/piperg2p)
 [![codecov](https://codecov.io/gh/buchwandler/piperg2p/graph/badge.svg?token=eMF0pdgARs)](https://codecov.io/gh/buchwandler/piperg2p)
 
-# piperg2p
+# PiperG2P
 
-`piperg2p` is an independent, voice-config-driven Piper-compatible frontend. It produces phoneme sequences and model IDs from Piper ONNX voice configurations. It does not synthesize audio, require Piper, or include Piper source or model data.
+`piperg2p` is an independent, voice-config-driven frontend for Piper ONNX voice configurations. It converts prepared text to phonemes and model IDs; it does not synthesize audio or require Piper at runtime.
 
-## Delivered scope
-
-- `text` phoneme voices with no eSpeak dependency.
-- `espeak` voices through `espeakng-runtime`, which provides native eSpeak NG access and CLI fallback while PiperG2P retains Piper-specific phoneme composition.
-- Unicode NFD normalization and voice-specific ID maps.
-- Sentence-grouped results and raw `[[ ... ]]` phoneme blocks in eSpeak mode.
-- Immutable diagnostics, typed configuration, errors, and missing-phoneme reporting.
-
-The native clause API is labeled `exact` only when it is available. The CLI path is always labeled `best-effort`. This release supports the named Piper Python `text` and ordinary `espeak` profile only. Pinyin, Hebrew, Japanese, and Thai are recognized configuration values but unavailable. Arabic eSpeak voices are rejected until Piper-compatible preprocessing is implemented.
+- Piper `text` and `espeak` phoneme types with voice-specific ID maps
+- Sentence-scoped results for model inference
+- Raw `[[ ... ]]` phoneme blocks
+- Optional Lexphon and G2Lex pronunciation overlays
+- Explicit backend modes and diagnostics
+- A reusable sibling-style high-level API
 
 ## Install
 
 ```bash
-pip install .
+python -m pip install piperg2p
 ```
 
-PiperG2P consumes **prepared, speakable text**. It does not verbalize numbers, abbreviations, units, currencies, dates, times, URLs, versions, or other written semantics. Prepare those forms in the calling application, then pass the result to `phonemize_prepared()`.
+| Extra                     | Purpose                                                    |
+| ------------------------- | ---------------------------------------------------------- |
+| `piperg2p[lexphon]`       | Managed installed pronunciation assets                     |
+| `piperg2p[lexicons]`      | Compatibility/convenience alias for `lexphon`              |
+| `piperg2p[g2lex]`         | Direct local `.g2lex` assets                               |
+| `piperg2p[espeak-direct]` | Bundled-loader support through `espeakng-runtime[bundled]` |
+| `piperg2p[reference]`     | Reference/phonetic benchmark tooling                       |
+| `piperg2p[docs]`          | Documentation build dependencies                           |
 
-PiperG2P has no runtime dependency on Spokenform or Numeralform. Installing either package does not change core PiperG2P behavior.
+## Quick start
 
-This boundary does not change eSpeak compatibility: PiperG2P passes prepared text to the selected backend, and backend-specific pronunciation behavior remains unchanged.
-
-Install PiperG2P normally. It depends on `espeakng-runtime`, which owns eSpeak discovery and execution. Text voices do not invoke eSpeak. For a bundled loader and data support, install `piperg2p[espeak-direct]`.
-
-`PIPERG2P_ESPEAK_EXECUTABLE`, `PIPERG2P_ESPEAK_LIBRARY`, and `PIPERG2P_ESPEAK_DATA` remain supported compatibility variables. Explicit Piper constructor arguments take precedence over these variables, which take precedence over `ESPEAKNG_RUNTIME_*` variables and runtime discovery.
-
-## Semantic preparation composition
-
-Use a separate preparation package only when written semantics need expansion:
+Use `phonemize_prepared()` for the structured high-level result:
 
 ```python
-from spokenform import prepare_for_piperg2p
 from piperg2p import phonemize_prepared
 
-prepared = prepare_for_piperg2p(
-    "Pay $12.50 for 2 kg.",
-    language="en",
-).spoken_text
-
 result = phonemize_prepared(
-    prepared,
+    "Hello world",
     language="en-us",
     config="voice.onnx.json",
 )
@@ -56,61 +45,45 @@ print(result.phonemes)
 print(result.token_ids)
 ```
 
-Install Spokenform separately. It is not required for PiperG2P core installation or core tests.
-
-## Usage
+For repeated use, construct a reusable cached facade:
 
 ```python
-from piperg2p import PiperFrontend
+from piperg2p import get_g2p
 
-frontend = PiperFrontend.from_config("voice.onnx.json")
-result = frontend.phonemize("Hello, world.")
+with get_g2p("en-us", config="voice.onnx.json") as g2p:
+    result = g2p.phonemize_prepared("Hello world")
+```
+
+The `language` argument is a source/routing language label. The `config` selects the Piper voice and its `phoneme_id_map`; `espeak.voice` in that config sets the base eSpeak voice. A language label does not select or replace the Piper model or configured base voice.
+
+## Results
+
+`result.phonemes` and `result.token_ids` are convenient flattened views. For Piper inference, normally process each sentence independently:
+
+```python
 for sentence in result.sentences:
     print(sentence.phoneme_string)
     print(sentence.ids)
-    print(sentence.missing_phonemes)
 ```
 
-The configured `phoneme_id_map` is authoritative. `result.ids` is a convenience flattening of sentence IDs. Model inference should normally consume each `sentence.ids` separately.
+The module-level `phonemize_prepared()` (also exported as `phonemize()`) returns a `PhonemizeResult`. `phonemes()` returns a plain string and `phoneme_ids()` returns a list of IDs. `PiperG2P.phonemize()` also returns a string; use `PiperG2P.phonemize_prepared()` when you need the structured result.
 
-## Lexicon-first mode
+## Prepared text
 
-Lexicon support is an opt-in overlay on the existing eSpeak frontend. Install `piperg2p[lexphon]` for managed Lexphon identifiers or `piperg2p[g2lex]` for explicit local `.g2lex` files. Raw `[[...]]` blocks have precedence, lexicon misses use PiperG2P's eSpeak backend, and no dictionary downloads occur implicitly. See [docs/lexicons.md](docs/lexicons.md).
+PiperG2P consumes prepared, speakable text; it does not verbalize written numbers, dates, units, or other semantic forms. An application may compose it with a separate preparation layer, but that layer is not a PiperG2P dependency. See the [prepared-text guide](docs/prepared-text.md).
 
-Use `*:espeak` assets for generic IPA pronunciation overrides. Use `*:espeak-piper` assets for Piper raw phoneme behavior with `phoneme_encoding="espeak-ipa3"`. Lexphon installs and verifies data externally, while PiperG2P owns interpretation, precedence, and voice-map ID encoding.
+## eSpeak and lexicons
+
+eSpeak backend behavior and capability modes are described in the [eSpeak guide](docs/espeak.md). Lexicon installation and selection are covered in the [lexicon guide](docs/lexicons.md); assets are never downloaded implicitly.
 
 ## Compatibility
 
-Compatibility is measured against pinned reference profiles, not a moving upstream branch. See [docs/compatibility.md](docs/compatibility.md), [docs/espeak.md](docs/espeak.md), and [docs/provenance.md](docs/provenance.md).
+Compatibility claims are tied to concrete backend capabilities and pinned reference profiles. See [compatibility](docs/compatibility.md), [provenance](docs/provenance.md), and the [reference benchmark guide](docs/reference-benchmark.md).
 
-## Independence
+## Documentation and examples
 
-The runtime package has no Piper dependency, does not import Piper, and does not bundle Piper GPL assets. Reference corpus metadata is development evidence only.
+- [Full documentation](docs/index.md)
+- [Executable examples](examples/README.md)
+- [Contributing](docs/contributing.md)
 
-## Diagnostics
-
-PiperG2P exposes detailed diagnostics for eSpeak backends through `BackendDiagnostics`. Key fields include:
-
-- `implementation`: The backend implementation type (`native`, `cli`, `text`)
-- `parity`: Piper's historical clause/composition compatibility label (`exact`, `best-effort`)
-- `exact_clause_api`: Whether the runtime exposes the terminator-capable clause API
-- `phoneme_output_api`: The runtime's phoneme generation mechanism (`native-trace`, `cli`)
-- `phoneme_parity`: The runtime's raw phoneme semantic parity (`exact`, `best-effort`)
-- `fallback_code`: The runtime's fallback cause identifier
-- `fallback_reason`: Human-readable fallback reason
-
-**Important:** The exact clause API provides exact clause boundaries, but the phoneme semantics in the exact-clause path may differ from CLI for isolated weak words. The `phoneme_parity` field reports the runtime's raw phoneme semantic parity, while the `parity` field remains Piper's historical clause/composition compatibility label.
-
-## Sibling-style API
-
-The high-level API keeps Piper voice configuration explicit while matching the shared development vocabulary used by sibling frontends:
-
-```python
-from piperg2p import phonemize_prepared
-
-result = phonemize_prepared("Hello world", language="en-us", config="voice.onnx.json")
-print(result.phonemes)
-print(result.token_ids)
-```
-
-Use `get_g2p(language, config=...)` for reuse. `tokenize`, `OverrideSpan`, `TokenAnnotation`, marker helpers, bounded `cache_info`, and `ids_to_phonemes` are also exported. The API never downloads models or lexicons. See `examples/README.md` for the twelve executable examples.
+PiperG2P does not bundle Piper source or model data and has no runtime dependency on Piper, Spokenform, or Numeralform.
